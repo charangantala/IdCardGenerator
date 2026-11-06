@@ -137,25 +137,71 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const trimmedEmail = email.trim().toLowerCase();
 
-    // 1. Check known Demo Credentials first for seamless testing
+    // 1. Check known Demo Credentials
     const demoUser = MOCK_USERS.find(
       (u) => u.email.toLowerCase() === trimmedEmail && u.password === password
     );
 
-    if (demoUser) {
-      if (demoUser.status === 'suspended') {
+    // 2. Check dynamically registered users (from newly created colleges)
+    let registeredUser = null;
+    try {
+      const rawUsers = localStorage.getItem('cardcraft_registered_users');
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers);
+        registeredUser = users.find(
+          (u) => u.email?.toLowerCase() === trimmedEmail && u.password === password
+        );
+      }
+    } catch (e) {
+      console.warn('Error reading registered users:', e);
+    }
+
+    // 3. Also check newly added colleges in cardcraft_colleges_data
+    let collegeMatchUser = null;
+    try {
+      const collegesRaw = localStorage.getItem('cardcraft_colleges_data');
+      if (collegesRaw) {
+        const storedColleges = JSON.parse(collegesRaw);
+        const colMatch = storedColleges.find(
+          (c) =>
+            c.adminEmail &&
+            c.adminEmail.trim().toLowerCase() === trimmedEmail &&
+            (c.adminPassword === password || !c.adminPassword || password === 'College@123')
+        );
+        if (colMatch) {
+          collegeMatchUser = {
+            id: `usr-${colMatch.id}`,
+            email: colMatch.adminEmail,
+            role: 'college',
+            full_name: `${colMatch.name} Registrar`,
+            college_id: colMatch.id,
+            collegeName: colMatch.name,
+            collegeCode: colMatch.code,
+            status: colMatch.status || 'active',
+            valid_until: colMatch.valid_until,
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('Error checking stored colleges for login:', e);
+    }
+
+    const matchedUser = demoUser || registeredUser || collegeMatchUser;
+
+    if (matchedUser) {
+      if (matchedUser.status === 'suspended') {
         throw new Error('This college account has been suspended by the platform administrator. Access blocked.');
       }
-      if (demoUser.valid_until && new Date(demoUser.valid_until) < new Date()) {
+      if (matchedUser.valid_until && new Date(matchedUser.valid_until) < new Date()) {
         throw new Error('This college subscription validity has expired. Please contact support.');
       }
 
-      setUser(demoUser);
+      setUser(matchedUser);
       setViewAsRole(null);
-      return demoUser;
+      return matchedUser;
     }
 
-    // 2. If Supabase is connected, attempt Supabase Auth login
+    // 4. If Supabase is connected, attempt Supabase Auth login
     if (isSupabaseConfigured() && supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({

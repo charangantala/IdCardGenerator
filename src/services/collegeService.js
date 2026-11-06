@@ -141,6 +141,9 @@ export const collegeService = {
    */
   async createCollege(collegeData) {
     const cleanCode = (collegeData.code || `COL-${Date.now()}`).trim().toUpperCase();
+    const cleanEmail = (collegeData.adminEmail || collegeData.email || '').trim();
+    const cleanPassword = (collegeData.adminPassword || collegeData.password || 'College@123').trim();
+
     const newCollege = {
       ...collegeData,
       id: collegeData.id || `col-${cleanCode.toLowerCase()}-${Date.now()}`,
@@ -152,6 +155,8 @@ export const collegeService = {
       valid_until: collegeData.validUntil || collegeData.valid_until || '2027-12-31',
       status: collegeData.status || 'active',
       template_config: collegeData.template_config || SAMPLE_TEMPLATES.classicBlue,
+      adminEmail: cleanEmail,
+      adminPassword: cleanPassword,
       created_at: new Date().toISOString(),
     };
 
@@ -188,6 +193,30 @@ export const collegeService = {
       ...stored.filter((c) => c.id !== newCollege.id && c.code !== newCollege.code),
     ];
     saveStoredColleges(updated);
+
+    // 3. Register college login credentials so registrar can log in immediately
+    if (cleanEmail) {
+      try {
+        const rawUsers = localStorage.getItem('cardcraft_registered_users');
+        const users = rawUsers ? JSON.parse(rawUsers) : [];
+        const regUser = {
+          id: `usr-${newCollege.id}`,
+          email: cleanEmail.toLowerCase(),
+          password: cleanPassword,
+          role: 'college',
+          full_name: `${newCollege.name} Registrar`,
+          college_id: newCollege.id,
+          collegeName: newCollege.name,
+          collegeCode: newCollege.code,
+          status: newCollege.status || 'active',
+          valid_until: newCollege.valid_until,
+        };
+        const filteredUsers = users.filter((u) => u.email.toLowerCase() !== regUser.email);
+        localStorage.setItem('cardcraft_registered_users', JSON.stringify([regUser, ...filteredUsers]));
+      } catch (e) {
+        console.error('Failed to store registered user:', e);
+      }
+    }
 
     return newCollege;
   },
