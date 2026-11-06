@@ -12,6 +12,7 @@ export const SAMPLE_CSV_ROWS = [
     roll_no: 'MITC-2024-CS-099',
     department: 'Computer Science & Engineering',
     year: '1',
+    section: 'A',
     blood_group: 'O+',
     phone: '9876543220',
     email: 'ethan.hunt@student.mitc.edu',
@@ -23,6 +24,7 @@ export const SAMPLE_CSV_ROWS = [
     roll_no: 'MITC-2023-CS-055',
     department: 'Computer Science & Engineering',
     year: '2',
+    section: 'B',
     blood_group: 'A+',
     phone: '9876543221',
     email: 'natasha.r@student.mitc.edu',
@@ -58,7 +60,9 @@ export function exportStudentsToCsv(students = [], filename = 'students_export.c
     Roll_No: s.rollNo || s.roll_no,
     Department: s.department || s.department_name,
     Year: s.year,
+    Section: s.section || 'A',
     Status: s.status,
+    Approved_By: s.approved_by || '',
     Blood_Group: s.bloodGroup || s.blood_group || '',
     Phone: s.phone || '',
     Email: s.email || '',
@@ -107,6 +111,7 @@ export function parseAndValidateStudentCsv(file, existingRollNumbers = []) {
           const rollNo = (row.roll_no || row.rollNo || row.Roll_No || '').trim();
           const department = (row.department || row.Department || '').trim();
           const year = Number(row.year || row.Year || 1);
+          const section = (row.section || row.Section || 'A').trim().toUpperCase().charAt(0) || 'A';
           const bloodGroup = (row.blood_group || row.bloodGroup || row.Blood_Group || 'O+').trim().toUpperCase();
           const phone = (row.phone || row.Phone || '').trim();
           const email = (row.email || row.Email || '').trim();
@@ -175,6 +180,7 @@ export function parseAndValidateStudentCsv(file, existingRollNumbers = []) {
               roll_no: rollNo,
               department,
               year,
+              section,
               bloodGroup,
               blood_group: bloodGroup,
               phone,

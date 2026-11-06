@@ -1,6 +1,22 @@
 import React, { useRef } from 'react';
 import Button from '../common/Button';
 
+// Sample pre-designed SVG logos for 1-click test branding
+const PRESET_LOGOS = [
+  {
+    name: 'Academic Shield Crest',
+    url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><path d='M50 5 L85 20 L85 55 C85 75 50 95 50 95 C50 95 15 75 15 55 L15 20 Z' fill='%231e3a8a' stroke='%23f59e0b' stroke-width='4'/><path d='M50 25 L65 40 L35 40 Z' fill='%23f59e0b'/><circle cx='50' cy='60' r='10' fill='%23ffffff'/></svg>",
+  },
+  {
+    name: 'Tech Emblem / Compass',
+    url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%23065f46' stroke='%2310b981' stroke-width='4'/><polygon points='50,15 60,40 85,50 60,60 50,85 40,60 15,50 40,40' fill='%23fbbf24'/><circle cx='50' cy='50' r='6' fill='%23ffffff'/></svg>",
+  },
+  {
+    name: 'Torch of Knowledge',
+    url: "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23991b1b'/><path d='M50 15 C40 30 60 40 50 55 C40 40 60 30 50 15 Z' fill='%23f59e0b'/><path d='M42 55 L58 55 L54 85 L46 85 Z' fill='%23ffffff'/></svg>",
+  },
+];
+
 const AVAILABLE_FONTS = [
   { value: 'Poppins', label: 'Poppins (Geometric & Modern)' },
   { value: 'Inter', label: 'Inter (Clean & Professional)' },
@@ -16,32 +32,9 @@ const PHOTO_SHAPES = [
 ];
 
 const LOGO_POSITIONS = [
-  { value: 'top-left', label: 'Top Left' },
-  { value: 'top-center', label: 'Top Center' },
+  { value: 'top-center', label: 'Top Center (Centered)' },
+  { value: 'top-left', label: 'Top Left (Classic Banner)' },
   { value: 'top-right', label: 'Top Right' },
-];
-
-const PRESET_LOGOS = [
-  {
-    name: 'Academic Cap',
-    url: 'https://api.iconify.design/lucide:graduation-cap.svg?color=%23ffffff',
-  },
-  {
-    name: 'University Shield',
-    url: 'https://api.iconify.design/lucide:shield-check.svg?color=%23ffffff',
-  },
-  {
-    name: 'Tech Microchip',
-    url: 'https://api.iconify.design/lucide:cpu.svg?color=%23ffffff',
-  },
-  {
-    name: 'Classic Campus',
-    url: 'https://api.iconify.design/lucide:landmark.svg?color=%23ffffff',
-  },
-  {
-    name: 'Science Atom',
-    url: 'https://api.iconify.design/lucide:atom.svg?color=%23ffffff',
-  },
 ];
 
 const ALL_FIELDS = [
@@ -88,8 +81,6 @@ export default function TemplateEditorForm({
   onChange,
   onSave,
   onReset,
-  collegeName = '',
-  collegeCode = '',
 }) {
   const fileInputRef = useRef(null);
 
@@ -102,9 +93,10 @@ export default function TemplateEditorForm({
   };
   const font = template.font || 'Poppins';
   const photoShape = template.photoShape || 'circle';
-  const logoPosition = template.logoPosition || 'top-left';
-  const collegeLogo = template.collegeLogo || template.logo_url || '';
-  const logoSize = Number(template.logoSize) || 42;
+  const logoPosition = template.logoPosition || 'top-center';
+  const collegeLogo = template.collegeLogo || template.logo_url || null;
+  const collegeName = template.collegeName || 'MIT College of Technology';
+  const collegeCode = template.collegeCode || 'MITC';
   const showFields = template.showFields || ['name', 'rollNo', 'department', 'year', 'bloodGroup', 'phone', 'validUntil'];
   const fieldLabels = template.fieldLabels || {};
   const showQR = template.showQR ?? true;
@@ -148,8 +140,8 @@ export default function TemplateEditorForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Logo file size must be less than 2 MB');
+    if (!['image/jpeg', 'image/png', 'image/svg+xml', 'image/webp'].includes(file.type)) {
+      alert('Please upload a valid image file (PNG, JPG, SVG, WebP)');
       return;
     }
 
@@ -162,30 +154,37 @@ export default function TemplateEditorForm({
   };
 
   const handleRemoveLogo = () => {
-    handleUpdate({ collegeLogo: '' });
+    handleUpdate({ collegeLogo: null });
   };
 
   return (
     <div className="space-y-6">
-      {/* 1. College Branding & Custom Logo (User Requested Feature) */}
-      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
-        <div className="flex items-center justify-between border-b pb-2">
+      {/* 1. College Logo & Branding Section */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-5 rounded-2xl border border-blue-200 space-y-4">
+        <div className="flex items-center justify-between">
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700">
-              College Logo & Branding
+            <h4 className="text-xs font-bold uppercase tracking-wider text-blue-900 flex items-center space-x-1.5">
+              <span>🏛️</span>
+              <span>College Logo & Emblem</span>
             </h4>
-            <p className="text-[11px] text-gray-500">
-              Upload your official institution crest or choose from preset emblems.
+            <p className="text-[11px] text-blue-700 mt-0.5">
+              Upload the institution's official logo or choose a sample crest.
             </p>
           </div>
-          <span className="text-xs font-mono font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
-            {collegeCode || template.collegeCode || 'COLLEGE'}
-          </span>
+          {collegeLogo && (
+            <button
+              type="button"
+              onClick={handleRemoveLogo}
+              className="text-xs text-rose-600 hover:text-rose-800 font-bold underline"
+            >
+              Remove Logo ✕
+            </button>
+          )}
         </div>
 
-        {/* Logo Preview & Upload */}
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-          <div className="relative group w-20 h-20 rounded-2xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center p-2 flex-shrink-0 shadow-md">
+        <div className="flex flex-wrap items-center gap-4">
+          {/* Logo Preview Box */}
+          <div className="w-16 h-16 rounded-2xl bg-white border-2 border-dashed border-blue-300 p-1 flex items-center justify-center shadow-xs flex-shrink-0">
             {collegeLogo ? (
               <img
                 src={collegeLogo}
@@ -193,109 +192,113 @@ export default function TemplateEditorForm({
                 className="w-full h-full object-contain"
               />
             ) : (
-              <span className="text-xs font-black text-white/50">NO LOGO</span>
+              <div className="text-center text-gray-400">
+                <span className="text-xl block">🏫</span>
+                <span className="text-[9px] font-bold uppercase">No Logo</span>
+              </div>
             )}
           </div>
 
-          <div className="space-y-2 flex-1 text-center sm:text-left">
-            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                onChange={handleLogoUpload}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-xs transition-colors"
+          <div className="space-y-2 flex-1 min-w-[200px]">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/svg+xml,image/webp"
+              onChange={handleLogoUpload}
+              className="hidden"
+              id="college-logo-upload"
+            />
+            <div className="flex flex-wrap gap-2">
+              <label
+                htmlFor="college-logo-upload"
+                className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-xs cursor-pointer transition-colors"
               >
-                Upload Custom Logo 📤
-              </button>
-
-              {collegeLogo && (
-                <button
-                  type="button"
-                  onClick={handleRemoveLogo}
-                  className="px-3 py-1.5 bg-white border border-rose-300 text-rose-600 rounded-lg text-xs font-semibold hover:bg-rose-50 transition-colors"
-                >
-                  Remove Logo ✕
-                </button>
-              )}
+                Upload Official Logo 📁
+              </label>
             </div>
-            <p className="text-[11px] text-gray-500">
-              Recommended: Transparent PNG or SVG • Max: 2 MB
+            <p className="text-[10px] text-gray-500">
+              Format: PNG (transparent recommended), JPG, SVG • Auto-scales inside card header
             </p>
           </div>
         </div>
 
-        {/* Preset Emblem Library */}
-        <div>
-          <span className="text-[10px] font-bold uppercase text-gray-400 block mb-2 tracking-wider">
-            Or Pick from Preset Emblems:
+        {/* Quick Sample Logos */}
+        <div className="pt-2 border-t border-blue-200/60">
+          <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1.5">
+            Or Test With Sample Emblems:
           </span>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {PRESET_LOGOS.map((emblem) => {
-              const isSelected = collegeLogo === emblem.url;
-              return (
-                <button
-                  key={emblem.name}
-                  type="button"
-                  onClick={() => handleUpdate({ collegeLogo: emblem.url })}
-                  className={`p-2 rounded-xl border text-xs flex flex-col items-center space-y-1 transition-all ${
-                    isSelected
-                      ? 'border-blue-600 bg-blue-50 font-bold text-blue-800 ring-2 ring-blue-500/20'
-                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <img src={emblem.url} alt={emblem.name} className="w-6 h-6 filter drop-shadow-xs" />
-                  <span className="text-[10px] truncate max-w-full">{emblem.name}</span>
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap gap-2">
+            {PRESET_LOGOS.map((preset) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => handleUpdate({ collegeLogo: preset.url })}
+                className="px-2.5 py-1 bg-white hover:bg-blue-100/60 border border-blue-200 rounded-lg text-[11px] font-medium text-gray-700 flex items-center space-x-1.5 shadow-2xs transition-colors"
+              >
+                <img src={preset.url} alt="" className="w-4 h-4 object-contain" />
+                <span>{preset.name}</span>
+              </button>
+            ))}
           </div>
         </div>
 
-        {/* Logo Display Settings */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Logo Position in Header
-            </label>
-            <select
-              value={logoPosition}
-              onChange={(e) => handleUpdate({ logoPosition: e.target.value })}
-              className="w-full text-xs p-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500"
-            >
-              {LOGO_POSITIONS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Logo Size: <span className="font-bold text-blue-600">{logoSize}px</span>
-            </label>
-            <input
-              type="range"
-              min="28"
-              max="58"
-              value={logoSize}
-              onChange={(e) => handleUpdate({ logoSize: Number(e.target.value) })}
-              className="w-full accent-blue-600 h-2 bg-gray-200 rounded-lg cursor-pointer mt-2"
-            />
+        {/* Logo Position */}
+        <div className="pt-2">
+          <label className="block text-xs font-semibold text-gray-700 mb-1">
+            Logo Header Position
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {LOGO_POSITIONS.map((pos) => (
+              <button
+                key={pos.value}
+                type="button"
+                onClick={() => handleUpdate({ logoPosition: pos.value })}
+                className={`py-1.5 px-2 text-xs font-semibold rounded-lg border text-center transition-all ${
+                  logoPosition === pos.value
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {pos.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Theme Presets */}
+      {/* 2. College Institution Name & Code */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="sm:col-span-2">
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            College Name on Card Header
+          </label>
+          <input
+            type="text"
+            value={collegeName}
+            onChange={(e) => handleUpdate({ collegeName: e.target.value })}
+            placeholder="e.g. MIT College of Technology"
+            className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-semibold text-gray-800"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1">
+            Short Code (Monogram Fallback)
+          </label>
+          <input
+            type="text"
+            value={collegeCode}
+            onChange={(e) => handleUpdate({ collegeCode: e.target.value.toUpperCase() })}
+            placeholder="e.g. MITC"
+            className="w-full text-xs px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono font-bold text-gray-800"
+          />
+        </div>
+      </div>
+
+      {/* 3. Theme Presets */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
         <span className="block text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">
-          Color Presets
+          Quick Color Palette Presets
         </span>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {THEME_PRESETS.map((preset) => (
@@ -327,10 +330,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 2. Layout & Dimensions */}
+      {/* 4. Layout & Dimensions */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          2. Layout & Card Orientation
+          Layout & Orientation
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -379,10 +382,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 3. Color Palette */}
+      {/* 5. Color Palette */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          3. Color Scheme
+          Custom Brand Colors
         </h4>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
@@ -455,10 +458,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 4. Typography & Photo Shape */}
+      {/* 6. Typography & Photo Shape */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          4. Typography & Photo Shape
+          Typography & Photo Shape
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -480,7 +483,7 @@ export default function TemplateEditorForm({
 
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Student Photo Shape
+              Photo Shape
             </label>
             <select
               value={photoShape}
@@ -497,10 +500,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 5. Visible Fields & Custom Labels */}
+      {/* 7. Visible Fields & Custom Labels */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          5. Visible Card Fields & Custom Labels
+          Visible Fields & On-Card Labels
         </h4>
         <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
           <div className="grid grid-cols-12 text-[11px] font-bold text-gray-500 uppercase tracking-wider pb-1 border-b">
@@ -549,10 +552,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 6. QR Code & Footer Text */}
+      {/* 8. QR Code & Footer Text */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          6. Verification QR & Footer Text
+          Verification QR & Footer Text
         </h4>
         <div className="space-y-3">
           <div className="flex items-center space-x-3 p-3 bg-white border border-gray-200 rounded-xl">
@@ -583,7 +586,7 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Save Button */}
       <div className="pt-4 border-t flex items-center justify-between">
         {onReset && (
           <Button type="button" variant="ghost" size="sm" onClick={onReset}>
@@ -592,7 +595,7 @@ export default function TemplateEditorForm({
         )}
         {onSave && (
           <Button type="button" variant="primary" size="md" onClick={onSave}>
-            Save Template to {collegeCode || 'College'} 💾
+            Save Template Config 💾
           </Button>
         )}
       </div>

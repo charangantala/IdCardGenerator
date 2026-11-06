@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import DepartmentCards from '../../components/filters/DepartmentCards';
 import YearTabs from '../../components/filters/YearTabs';
+import SectionFilter from '../../components/filters/SectionFilter';
 import StudentTable from '../../components/tables/StudentTable';
 import StudentForm from '../../components/forms/StudentForm';
 import DepartmentForm from '../../components/forms/DepartmentForm';
@@ -14,6 +15,12 @@ import { SAMPLE_DEPARTMENTS, SAMPLE_STUDENTS, SAMPLE_TEMPLATES } from '../../uti
 import { exportStudentsToCsv } from '../../utils/csv';
 import { downloadBatchCardsAsPdf } from '../../utils/downloadCard';
 import { useAuth } from '../../context/AuthContext';
+import { templateService } from '../../services/templateService';
+import {
+  getStoredSections,
+  saveStoredSections,
+  getFacultyAdvisorForSection,
+} from '../../utils/sectionData';
 
 export default function CollegeHome() {
   const { user } = useAuth();
@@ -24,6 +31,8 @@ export default function CollegeHome() {
   const [students, setStudents] = useState([...SAMPLE_STUDENTS]);
   const [selectedDeptId, setSelectedDeptId] = useState(SAMPLE_DEPARTMENTS[0]?.id || 'dept-cse');
   const [selectedYear, setSelectedYear] = useState('all');
+  const [selectedSection, setSelectedSection] = useState('all');
+  const [sections, setSections] = useState(() => getStoredSections());
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -39,6 +48,24 @@ export default function CollegeHome() {
   const [batchPdfLoading, setBatchPdfLoading] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
   const batchRenderRef = useRef(null);
+
+  // College-specific template configuration
+  const [collegeTemplate, setCollegeTemplate] = useState({
+    ...SAMPLE_TEMPLATES.classicBlue,
+    collegeName,
+  });
+
+  React.useEffect(() => {
+    async function loadTemplate() {
+      try {
+        const t = await templateService.getTemplateByCollegeId(user?.college_id || 'mitc');
+        if (t) setCollegeTemplate(t);
+      } catch (err) {
+        console.error('Failed to load college template:', err);
+      }
+    }
+    loadTemplate();
+  }, [user?.college_id]);
 
   const [toast, setToast] = useState(null);
 
@@ -77,21 +104,81 @@ export default function CollegeHome() {
     return counts;
   }, [students, selectedDeptId]);
 
-  // Filtered students for display
+  // Sections active for current year and department
+  const activeYearSections = useMemo(() => {
+    if (selectedYear === 'all') {
+      const deptSections = sections.filter((s) => s.department_id === selectedDeptId);
+      const seen = new Set();
+      return deptSections.filter((s) => {
+        if (seen.has(s.code)) return false;
+        seen.add(s.code);
+        return true;
+      });
+    }
+    return sections.filter(
+      (s) => s.department_id === selectedDeptId && Number(s.year) === Number(selectedYear)
+    );
+  }, [sections, selectedDeptId, selectedYear]);
+
+  // Active section faculty advisor
+  const activeFaculty = useMemo(() => {
+    return getFacultyAdvisorForSection(
+      sections,
+      selectedDeptId,
+      selectedYear === 'all' ? 1 : selectedYear,
+      selectedSection === 'all' ? 'A' : selectedSection
+    );
+  }, [sections, selectedDeptId, selectedYear, selectedSection]);
+
+  // Student counts by section in current active year
+  const studentCountsBySection = useMemo(() => {
+    const counts = {};
+    students
+      .filter((s) => {
+        if (s.department_id !== selectedDeptId) return false;
+        if (selectedYear !== 'all' && Number(s.year) !== Number(selectedYear)) return false;
+        return true;
+      })
+      .forEach((s) => {
+        const code = (s.section || 'A').toUpperCase();
+        counts[code] = (counts[code] || 0) + 1;
+      });
+    return counts;
+  }, [students, selectedDeptId, selectedYear]);
+
+  // Filtered students for display with approver metadata
   const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      if (s.department_id !== selectedDeptId) return false;
-      if (selectedYear !== 'all' && Number(s.year) !== Number(selectedYear)) return false;
-      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-      if (searchTerm.trim()) {
-        const query = searchTerm.toLowerCase();
-        const matchesName = s.name?.toLowerCase().includes(query);
-        const matchesRoll = (s.rollNo || s.roll_no)?.toLowerCase().includes(query);
-        if (!matchesName && !matchesRoll) return false;
-      }
-      return true;
-    });
-  }, [students, selectedDeptId, selectedYear, statusFilter, searchTerm]);
+    return students
+      .filter((s) => {
+        if (s.department_id !== selectedDeptId) return false;
+        if (selectedYear !== 'all' && Number(s.year) !== Number(selectedYear)) return false;
+        if (
+          selectedSection !== 'all' &&
+          (s.section || 'A').toUpperCase() !== String(selectedSection).toUpperCase()
+        )
+          return false;
+        if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+        if (searchTerm.trim()) {
+          const query = searchTerm.toLowerCase();
+          const matchesName = s.name?.toLowerCase().includes(query);
+          const matchesRoll = (s.rollNo || s.roll_no)?.toLowerCase().includes(query);
+          if (!matchesName && !matchesRoll) return false;
+        }
+        return true;
+      })
+      .map((st) => {
+        const advisor = getFacultyAdvisorForSection(
+          sections,
+          st.department_id,
+          st.year,
+          st.section || 'A'
+        );
+        return {
+          ...st,
+          approver_name: st.approved_by || advisor?.name || 'Section In-Charge',
+        };
+      });
+  }, [students, selectedDeptId, selectedYear, selectedSection, statusFilter, searchTerm, sections]);
 
   // Approved students eligible for batch PDF
   const approvedStudents = useMemo(() => {
@@ -184,6 +271,7 @@ export default function CollegeHome() {
         department_id: selectedDeptId,
         department: activeDepartment?.name || '',
         year: selectedYear === 'all' ? 1 : Number(selectedYear),
+        section: selectedSection === 'all' ? 'A' : selectedSection,
         status: 'draft',
         gender: 'Male',
         bloodGroup: 'O+',
@@ -193,6 +281,29 @@ export default function CollegeHome() {
         collegeName,
       },
     });
+  };
+
+  const handleUpdateSectionFaculty = (sectionId, facultyData) => {
+    const updated = sections.map((sec) =>
+      sec.id === sectionId ? { ...sec, ...facultyData } : sec
+    );
+    setSections(updated);
+    saveStoredSections(updated);
+    showToast(`Assigned ${facultyData.faculty_name} as Section In-Charge!`, 'success');
+  };
+
+  const handleAddSection = (newSec) => {
+    const newSecObj = {
+      ...newSec,
+      id: `sec-${Date.now()}`,
+      college_id: user?.college_id || 'mitc',
+      department_id: selectedDeptId,
+      year: selectedYear === 'all' ? 1 : Number(selectedYear),
+    };
+    const updated = [...sections, newSecObj];
+    setSections(updated);
+    saveStoredSections(updated);
+    showToast(`Section ${newSec.code} created with ${newSec.faculty_name} as Approver!`, 'success');
   };
 
   const handleSaveStudent = (field, val) => {
@@ -245,10 +356,22 @@ export default function CollegeHome() {
   };
 
   const handleApproveStudent = (student) => {
-    setStudents((prev) =>
-      prev.map((s) => (s.id === student.id ? { ...s, status: 'approved', reject_reason: null } : s))
+    const advisor = getFacultyAdvisorForSection(
+      sections,
+      student.department_id,
+      student.year,
+      student.section || 'A'
     );
-    showToast(`Approved card for ${student.name}!`, 'success');
+    const approverName = advisor?.name || 'Assigned Faculty Advisor';
+
+    setStudents((prev) =>
+      prev.map((s) =>
+        s.id === student.id
+          ? { ...s, status: 'approved', approved_by: approverName, reject_reason: null }
+          : s
+      )
+    );
+    showToast(`Approved ID card for ${student.name} (Endorsed by ${approverName})!`, 'success');
   };
 
   const handleOpenRejectModal = (student) => {
@@ -338,6 +461,7 @@ export default function CollegeHome() {
           onSelect={(id) => {
             setSelectedDeptId(id);
             setSelectedYear('all');
+            setSelectedSection('all');
           }}
           onAddNew={() => setDepartmentModal({ isOpen: true, department: null })}
           onEdit={(dept) => setDepartmentModal({ isOpen: true, department: dept })}
@@ -394,8 +518,24 @@ export default function CollegeHome() {
         <YearTabs
           yearsCount={activeDepartment?.years || 4}
           selectedYear={selectedYear}
-          onSelectYear={setSelectedYear}
+          onSelectYear={(yr) => {
+            setSelectedYear(yr);
+            setSelectedSection('all');
+          }}
           studentCountsByYear={studentCountsByYear}
+        />
+
+        {/* Section Division & Faculty In-Charge Spotlight */}
+        <SectionFilter
+          sections={activeYearSections}
+          selectedSection={selectedSection}
+          onSelectSection={setSelectedSection}
+          studentCountsBySection={studentCountsBySection}
+          activeFaculty={activeFaculty}
+          onUpdateSectionFaculty={handleUpdateSectionFaculty}
+          onAddSection={handleAddSection}
+          selectedYear={selectedYear}
+          departmentName={activeDepartment?.name}
         />
 
         {/* Student Table */}
@@ -420,7 +560,7 @@ export default function CollegeHome() {
           <div key={`batch-${st.id}`} className="p-4">
             <IdCard
               student={st}
-              template={{ ...SAMPLE_TEMPLATES.classicBlue, collegeName }}
+              template={collegeTemplate}
             />
           </div>
         ))}
@@ -480,7 +620,7 @@ export default function CollegeHome() {
           <div className="space-y-4">
             <IdCardPreview
               student={cardPreviewModal.student}
-              template={SAMPLE_TEMPLATES.classicBlue}
+              template={collegeTemplate}
               status={cardPreviewModal.student.status}
             />
             <div className="flex justify-end pt-3 border-t">

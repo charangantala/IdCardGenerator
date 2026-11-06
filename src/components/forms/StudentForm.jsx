@@ -27,6 +27,13 @@ const YEAR_OPTIONS = [
   { value: 4, label: '4th Year' },
 ];
 
+const SECTION_OPTIONS = [
+  { value: 'A', label: 'Section A' },
+  { value: 'B', label: 'Section B' },
+  { value: 'C', label: 'Section C' },
+  { value: 'D', label: 'Section D' },
+];
+
 /**
  * StudentForm - Reusable controlled student details input form.
  * Follows Rule 3: Plain controlled inputs (value + onChange).
@@ -196,6 +203,17 @@ export default function StudentForm({
             options={YEAR_OPTIONS}
             required
             error={errors.year}
+            disabled={isLocked}
+          />
+
+          <Select
+            label="Class Section"
+            id="section"
+            value={formData.section || 'A'}
+            onChange={handleChange}
+            options={SECTION_OPTIONS}
+            required
+            error={errors.section}
             disabled={isLocked}
           />
         </div>

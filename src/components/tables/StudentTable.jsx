@@ -91,13 +91,16 @@ export default function StudentTable({
               <th className="py-3.5 px-4">Student</th>
               <th className="py-3.5 px-4">Roll Number</th>
               <th className="py-3.5 px-4">Year / Dept</th>
-              <th className="py-3.5 px-4">Status</th>
+              <th className="py-3.5 px-4">Section</th>
+              <th className="py-3.5 px-4">Status & Approver</th>
               <th className="py-3.5 px-4 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {students.map((student) => {
               const photo = student.photoUrl || student.photo_url;
+              const sectionCode = student.section || 'A';
+              const approverName = student.approved_by || student.approver_name || student.faculty_name;
               return (
                 <tr key={student.id} className="hover:bg-slate-50/80 transition-colors">
                   {/* Photo & Name */}
@@ -129,16 +132,39 @@ export default function StudentTable({
                   {/* Year / Dept */}
                   <td className="py-3 px-4">
                     <div className="font-medium text-gray-800">Year {student.year}</div>
-                    <div className="text-[11px] text-gray-400 truncate max-w-[180px]">
+                    <div className="text-[11px] text-gray-400 truncate max-w-[160px]">
                       {student.department || student.department_name}
                     </div>
                   </td>
 
-                  {/* Status Badge */}
+                  {/* Section Badge */}
+                  <td className="py-3 px-4">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                      Sec {sectionCode}
+                    </span>
+                  </td>
+
+                  {/* Status & Faculty Approver */}
                   <td className="py-3 px-4">
                     {renderStatusBadge(student.status)}
+                    {student.status === 'approved' && approverName && (
+                      <div className="text-[10px] text-emerald-700 font-medium flex items-center space-x-1 mt-1">
+                        <span>🛡️</span>
+                        <span className="truncate max-w-[140px]" title={`Approved by ${approverName}`}>
+                          By {approverName}
+                        </span>
+                      </div>
+                    )}
+                    {student.status === 'submitted' && approverName && (
+                      <div className="text-[10px] text-amber-700 flex items-center space-x-1 mt-1">
+                        <span>⏳</span>
+                        <span className="truncate max-w-[140px]" title={`Pending approval by ${approverName}`}>
+                          {approverName}
+                        </span>
+                      </div>
+                    )}
                     {student.status === 'rejected' && student.reject_reason && (
-                      <div className="text-[10px] text-rose-600 mt-0.5 line-clamp-1 italic" title={student.reject_reason}>
+                      <div className="text-[10px] text-rose-600 mt-1 line-clamp-1 italic" title={student.reject_reason}>
                         "{student.reject_reason}"
                       </div>
                     )}

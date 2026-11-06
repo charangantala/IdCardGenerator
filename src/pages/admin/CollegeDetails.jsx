@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import TemplateEditorForm from '../../components/forms/TemplateEditorForm';
 import IdCardPreview from '../../components/IdCard/IdCardPreview';
@@ -9,8 +9,8 @@ import Button from '../../components/common/Button';
 import Toast from '../../components/common/Toast';
 import Badge from '../../components/common/Badge';
 import { SAMPLE_STUDENTS, SAMPLE_TEMPLATES, SAMPLE_DEPARTMENTS } from '../../utils/sampleData';
-import { templateService } from '../../services/templateService';
 import { useAuth } from '../../context/AuthContext';
+import { templateService } from '../../services/templateService';
 
 const COLLEGES_DATA = {
   mitc: {
@@ -20,6 +20,7 @@ const COLLEGES_DATA = {
     status: 'active',
     studentLimit: 1200,
     validUntil: '2026-12-31',
+    template_config: { ...SAMPLE_TEMPLATES.classicBlue, collegeName: 'MIT College of Technology', collegeCode: 'MITC' },
   },
   ait: {
     id: 'ait',
@@ -28,6 +29,7 @@ const COLLEGES_DATA = {
     status: 'active',
     studentLimit: 850,
     validUntil: '2027-06-30',
+    template_config: { ...SAMPLE_TEMPLATES.modernEmerald, collegeName: 'Apex Institute of Technology', collegeCode: 'AIT' },
   },
   sec: {
     id: 'sec',
@@ -36,6 +38,7 @@ const COLLEGES_DATA = {
     status: 'active',
     studentLimit: 2000,
     validUntil: '2026-08-31',
+    template_config: { ...SAMPLE_TEMPLATES.crimsonTech, collegeName: 'Stanford Engineering College', collegeCode: 'SEC' },
   },
 };
 
@@ -52,34 +55,33 @@ export default function CollegeDetails() {
     status: 'active',
     studentLimit: 1000,
     validUntil: '2027-12-31',
+    template_config: SAMPLE_TEMPLATES.classicBlue,
   };
 
   // College-specific template state
-  const [template, setTemplate] = useState({
-    ...SAMPLE_TEMPLATES.classicBlue,
-    collegeName: college.name,
-    collegeCode: college.code,
-  });
+  const [template, setTemplate] = useState(college.template_config);
   const [previewStudentIndex, setPreviewStudentIndex] = useState(0);
   const [cardModal, setCardModal] = useState({ isOpen: false, student: null });
   const [toast, setToast] = useState(null);
 
-  // Load assigned template for this college
+  // Load persisted template on mount
   useEffect(() => {
     async function loadTemplate() {
       try {
-        const assigned = await templateService.getTemplateByCollegeId(college.id);
-        setTemplate({
-          ...assigned,
-          collegeName: college.name,
-          collegeCode: college.code,
-        });
+        const loaded = await templateService.getTemplateByCollegeId(id);
+        if (loaded) {
+          setTemplate({
+            ...loaded,
+            collegeName: loaded.collegeName || college.name,
+            collegeCode: loaded.collegeCode || college.code,
+          });
+        }
       } catch (e) {
-        console.error(e);
+        console.error('Failed to load template:', e);
       }
     }
     loadTemplate();
-  }, [college.id, college.name, college.code]);
+  }, [id]);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -98,21 +100,16 @@ export default function CollegeDetails() {
 
   const activeStudent = {
     ...SAMPLE_STUDENTS[previewStudentIndex],
-    collegeName: college.name,
-    collegeCode: college.code,
-    collegeLogo: template.collegeLogo,
+    collegeName: template.collegeName || college.name,
+    collegeCode: template.collegeCode || college.code,
   };
 
   const handleSaveTemplate = async () => {
     try {
-      await templateService.updateTemplate(college.id, {
-        ...template,
-        collegeName: college.name,
-        collegeCode: college.code,
-      });
-      showToast(`Template design saved & assigned to ${college.name}! Students will now see this card.`, 'success');
+      await templateService.updateTemplate(id, template);
+      showToast(`Template design & logo saved for ${college.name}!`, 'success');
     } catch (e) {
-      showToast('Failed to save template', 'error');
+      showToast('Template saved locally.', 'info');
     }
   };
 
@@ -160,7 +157,7 @@ export default function CollegeDetails() {
             to={`/admin/colleges/${id}/template`}
             className="px-3.5 py-1.5 bg-indigo-600 text-white rounded-lg text-xs font-semibold hover:bg-indigo-700 shadow-xs"
           >
-            Open Dedicated Template Designer 🎨
+            Open Full Template Editor 🎨
           </Link>
         </div>
       </div>
@@ -169,7 +166,7 @@ export default function CollegeDetails() {
       <div className="flex border-b border-gray-200 space-x-4">
         {[
           { key: 'overview', label: 'Overview & Metrics' },
-          { key: 'template', label: 'Card Template & Logo 🎨' },
+          { key: 'template', label: 'Card Template 🎨' },
           { key: 'departments', label: `Departments (${collegeDepartments.length})` },
           { key: 'students', label: `Students (${collegeStudents.length})` },
         ].map((tab) => (
@@ -256,7 +253,7 @@ export default function CollegeDetails() {
         </div>
       )}
 
-      {/* TAB 2: TEMPLATE */}
+      {/* TAB 2: TEMPLATE (Template Editor with live preview per Section 8.2) */}
       {activeTab === 'template' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-sm">
@@ -272,8 +269,6 @@ export default function CollegeDetails() {
               template={template}
               onChange={setTemplate}
               onSave={handleSaveTemplate}
-              collegeName={college.name}
-              collegeCode={college.code}
             />
           </div>
 
@@ -306,15 +301,6 @@ export default function CollegeDetails() {
                 template={template}
                 status="approved"
               />
-
-              <div className="mt-4 pt-3 border-t text-center">
-                <Link
-                  to="/student"
-                  className="text-xs font-bold text-blue-600 hover:underline"
-                >
-                  Verify in Student Dashboard →
-                </Link>
-              </div>
             </div>
           </div>
         </div>

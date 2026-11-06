@@ -46,24 +46,13 @@ export default function IdCard({ student = {}, template = {} }) {
     template?.footerText ?? 'If found, please return to the college office.';
   const cornerRadius = template?.cornerRadius !== undefined ? template.cornerRadius : 14;
 
-  // College Branding & Logo
-  const collegeName =
-    template?.collegeName ||
-    student?.collegeName ||
-    student?.college_name ||
-    'COLLEGE / UNIVERSITY NAME';
-  const collegeCode =
-    template?.collegeCode ||
-    student?.collegeCode ||
-    student?.college_code ||
-    '';
+  // College Logo: support base64, URL from template or student
   const collegeLogo =
     template?.collegeLogo ||
     template?.logo_url ||
     student?.collegeLogo ||
-    student?.logo_url ||
-    '';
-  const logoSize = Number(template?.logoSize) || 40;
+    student?.college_logo ||
+    null;
 
   // Student details normalized
   const name = student?.name || 'STUDENT NAME';
@@ -79,6 +68,16 @@ export default function IdCard({ student = {}, template = {} }) {
   const dob = student?.dob || '—';
   const validUntil = student?.validUntil || student?.valid_until || '2026-06-30';
   const photoUrl = student?.photoUrl || student?.photo_url || '';
+  const collegeName =
+    template?.collegeName ||
+    student?.collegeName ||
+    student?.college_name ||
+    'COLLEGE / UNIVERSITY NAME';
+  const collegeCode =
+    template?.collegeCode ||
+    student?.collegeCode ||
+    student?.college_code ||
+    '';
   const cardId = student?.card_id || student?.cardId || student?.id || 'demo-card-id';
   const verifyUrl =
     typeof window !== 'undefined'
@@ -94,10 +93,11 @@ export default function IdCard({ student = {}, template = {} }) {
       : 'rounded-none';
 
   // Dynamic field mapping
+  const sectionLabel = student?.section ? ` • Sec ${student.section}` : '';
   const fieldMap = {
     rollNo: { label: fieldLabels.rollNo, value: rollNo },
     department: { label: fieldLabels.department, value: department },
-    year: { label: fieldLabels.year, value: yearFormatted },
+    year: { label: fieldLabels.year, value: `${yearFormatted}${sectionLabel}` },
     bloodGroup: { label: fieldLabels.bloodGroup, value: bloodGroup },
     phone: { label: fieldLabels.phone, value: phone },
     email: { label: fieldLabels.email, value: email },
@@ -125,33 +125,25 @@ export default function IdCard({ student = {}, template = {} }) {
         color: '#ffffff',
       }}
     >
-      {/* Decorative accent top/bottom bar */}
+      {/* Decorative accent bottom bar */}
       <div
         className="absolute bottom-0 left-0 right-0 h-1"
         style={{ backgroundColor: colors.secondary }}
       />
-      <div className={`flex gap-3 items-center ${getHeaderAlignment()}`}>
-        {/* College Logo / Monogram */}
+      <div className={`flex gap-2.5 ${getHeaderAlignment()}`}>
+        {/* College Logo Image OR Fallback Monogram */}
         {collegeLogo ? (
-          <div
-            className="flex-shrink-0 flex items-center justify-center overflow-hidden rounded-xl bg-white/10 p-1 border border-white/20 shadow-xs"
-            style={{
-              width: `${logoSize}px`,
-              height: `${logoSize}px`,
-            }}
-          >
+          <div className="w-11 h-11 flex-shrink-0 rounded-xl overflow-hidden bg-white/95 p-1 flex items-center justify-center shadow-md border-2 border-white/40">
             <img
               src={collegeLogo}
-              alt={`${collegeName} Logo`}
+              alt={collegeName}
               className="w-full h-full object-contain"
             />
           </div>
         ) : (
           <div
-            className="flex-shrink-0 rounded-xl flex items-center justify-center font-extrabold text-xs uppercase shadow-sm border border-white/20"
+            className="w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center font-bold text-xs uppercase shadow-sm border border-white/20"
             style={{
-              width: `${logoSize}px`,
-              height: `${logoSize}px`,
               backgroundColor: colors.secondary,
               color: '#ffffff',
             }}
@@ -164,7 +156,7 @@ export default function IdCard({ student = {}, template = {} }) {
           <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider leading-tight truncate">
             {collegeName}
           </h2>
-          <span className="text-[10px] opacity-90 tracking-widest uppercase font-medium block mt-0.5">
+          <span className="text-[10px] opacity-90 tracking-widest uppercase font-medium block">
             Student Identity Card
           </span>
         </div>
@@ -254,7 +246,7 @@ export default function IdCard({ student = {}, template = {} }) {
           {/* Key-Value Details Grid */}
           <div className="w-full bg-slate-50/80 rounded-lg p-2.5 border border-slate-100 space-y-1.5 text-left text-xs mb-3">
             {visibleMetadataFields.map((fieldKey) => {
-              if (fieldKey === 'department') return null; // already displayed prominently
+              if (fieldKey === 'department') return null;
               const item = fieldMap[fieldKey];
               if (!item) return null;
               return (
@@ -334,7 +326,7 @@ export default function IdCard({ student = {}, template = {} }) {
 
       {/* Card Body - 2 Columns */}
       <div className="px-5 py-3 flex-1 flex items-center gap-5">
-        {/* Left Column: Photo & QR */}
+        {/* Left Column: Photo & Blood */}
         <div className="flex flex-col items-center justify-center flex-shrink-0">
           <div
             className={`w-24 h-28 overflow-hidden border-3 shadow-md flex items-center justify-center bg-gray-100 ${photoShapeClass}`}
