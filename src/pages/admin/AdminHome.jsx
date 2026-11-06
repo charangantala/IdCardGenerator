@@ -1,12 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import CollegeTable from '../../components/tables/CollegeTable';
 import CollegeForm from '../../components/forms/CollegeForm';
 import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import Toast from '../../components/common/Toast';
-import { SAMPLE_STUDENTS, SAMPLE_TEMPLATES } from '../../utils/sampleData';
+import { SAMPLE_TEMPLATES } from '../../utils/sampleData';
+import { collegeService } from '../../services/collegeService';
+import { studentService } from '../../services/studentService';
 
-const INITIAL_COLLEGES = [
+const DEFAULT_COLLEGES = [
   {
     id: 'mitc',
     name: 'MIT College of Technology',
@@ -18,38 +20,41 @@ const INITIAL_COLLEGES = [
     valid_until: '2026-12-31',
     template_config: SAMPLE_TEMPLATES.classicBlue,
   },
-  {
-    id: 'ait',
-    name: 'Apex Institute of Technology',
-    code: 'AIT',
-    status: 'active',
-    studentLimit: 850,
-    student_limit: 850,
-    validUntil: '2027-06-30',
-    valid_until: '2027-06-30',
-    template_config: SAMPLE_TEMPLATES.modernEmerald,
-  },
-  {
-    id: 'sec',
-    name: 'Stanford Engineering College',
-    code: 'SEC',
-    status: 'active',
-    studentLimit: 2000,
-    student_limit: 2000,
-    validUntil: '2026-08-31',
-    valid_until: '2026-08-31',
-    template_config: SAMPLE_TEMPLATES.crimsonTech,
-  },
 ];
 
 export default function AdminHome() {
-  const [colleges, setColleges] = useState(INITIAL_COLLEGES);
+  const [colleges, setColleges] = useState(DEFAULT_COLLEGES);
+  const [liveStudents, setLiveStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
 
   const [collegeModal, setCollegeModal] = useState({ isOpen: false, college: null });
   const [deleteConfirm, setDeleteConfirm] = useState({ isOpen: false, college: null });
   const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    async function loadAdminData() {
+      try {
+        const fetched = await collegeService.getColleges();
+        if (fetched && fetched.length > 0) {
+          setColleges(fetched);
+        }
+        const studs = await studentService.getStudentsByCollege('mitc');
+        if (studs) setLiveStudents(studs);
+      } catch (err) {
+        console.warn('Failed to fetch admin data from database:', err);
+      }
+    }
+    loadAdminData();
+
+    const unsubscribe = studentService.subscribeToChanges(() => {
+      studentService.getStudentsByCollege('mitc').then((data) => {
+        if (data) setLiveStudents(data);
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const showToast = (message, type = 'info') => {
     setToast({ message, type });
@@ -59,12 +64,12 @@ export default function AdminHome() {
   // Compute student counts per college
   const studentCounts = useMemo(() => {
     const counts = {};
-    SAMPLE_STUDENTS.forEach((st) => {
+    liveStudents.forEach((st) => {
       const colId = st.college_id || 'mitc';
       counts[colId] = (counts[colId] || 0) + 1;
     });
     return counts;
-  }, []);
+  }, [liveStudents]);
 
   // Filtered colleges list
   const filteredColleges = useMemo(() => {
@@ -81,28 +86,35 @@ export default function AdminHome() {
   }, [colleges, statusFilter, searchTerm]);
 
   // Handlers
-  const handleSaveCollege = (formData) => {
-    if (formData.id) {
-      // Edit
-      setColleges((prev) =>
-        prev.map((c) => (c.id === formData.id ? { ...c, ...formData } : c))
-      );
-      showToast(`College "${formData.name}" updated successfully!`, 'success');
-    } else {
-      // Add
-      const newCollege = {
-        ...formData,
-        id: formData.code.toLowerCase(),
-        template_config: SAMPLE_TEMPLATES.classicBlue,
-      };
-      setColleges((prev) => [newCollege, ...prev]);
-      showToast(`College "${newCollege.name}" created with first registrar login!`, 'success');
+  const handleSaveCollege = async (formData) => {
+    try {
+      if (formData.id) {
+        // Edit
+        const updated = await collegeService.updateCollege(formData.id, formData);
+        setColleges((prev) =>
+          prev.map((c) => (c.id === formData.id ? { ...c, ...updated } : c))
+        );
+        showToast(`College "${formData.name}" updated successfully!`, 'success');
+      } else {
+        // Add
+        const newCollege = await collegeService.createCollege(formData);
+        setColleges((prev) => [newCollege, ...prev]);
+        showToast(`College "${newCollege.name}" created with first registrar login!`, 'success');
+      }
+    } catch (err) {
+      console.error('Failed to save college:', err);
+      showToast('Saved changes locally.', 'info');
     }
     setCollegeModal({ isOpen: false, college: null });
   };
 
-  const handleToggleStatus = (college) => {
+  const handleToggleStatus = async (college) => {
     const newStatus = college.status === 'suspended' ? 'active' : 'suspended';
+    try {
+      await collegeService.updateCollege(college.id, { status: newStatus });
+    } catch (e) {
+      console.warn('Update status failed:', e);
+    }
     setColleges((prev) =>
       prev.map((c) => (c.id === college.id ? { ...c, status: newStatus } : c))
     );
@@ -112,8 +124,13 @@ export default function AdminHome() {
     );
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteConfirm.college) return;
+    try {
+      await collegeService.deleteCollege(deleteConfirm.college.id);
+    } catch (e) {
+      console.warn('Delete failed:', e);
+    }
     setColleges((prev) => prev.filter((c) => c.id !== deleteConfirm.college.id));
     showToast(`College "${deleteConfirm.college.name}" was permanently removed.`, 'info');
     setDeleteConfirm({ isOpen: false, college: null });

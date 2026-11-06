@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import TemplateEditorForm from '../../components/forms/TemplateEditorForm';
 import IdCardPreview from '../../components/IdCard/IdCardPreview';
@@ -8,9 +8,10 @@ import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import Toast from '../../components/common/Toast';
 import Badge from '../../components/common/Badge';
-import { SAMPLE_STUDENTS, SAMPLE_TEMPLATES, SAMPLE_DEPARTMENTS } from '../../utils/sampleData';
+import { SAMPLE_TEMPLATES, SAMPLE_DEPARTMENTS } from '../../utils/sampleData';
 import { useAuth } from '../../context/AuthContext';
 import { templateService } from '../../services/templateService';
+import { studentService } from '../../services/studentService';
 
 const COLLEGES_DATA = {
   mitc: {
@@ -98,8 +99,30 @@ export default function CollegeDetails() {
     return SAMPLE_DEPARTMENTS.filter((d) => (d.college_id || 'mitc') === id);
   }, [id]);
 
-  const activeStudent = {
-    ...SAMPLE_STUDENTS[previewStudentIndex],
+  const [liveStudents, setLiveStudents] = useState([]);
+
+  useEffect(() => {
+    async function fetchStudents() {
+      try {
+        const list = await studentService.getStudentsByCollege(id);
+        if (list && list.length > 0) setLiveStudents(list);
+      } catch (e) {
+        console.warn('Could not load students for preview:', e);
+      }
+    }
+    fetchStudents();
+  }, [id]);
+
+  const activeStudent = liveStudents[previewStudentIndex] || {
+    name: 'Sample Student Preview',
+    rollNo: `${college.code || 'COL'}-2024-001`,
+    department: 'Computer Science & Engineering',
+    year: 2,
+    section: 'A',
+    bloodGroup: 'O+',
+    phone: '9876543210',
+    email: `student@${(college.code || 'mitc').toLowerCase()}.edu`,
+    status: 'approved',
     collegeName: template.collegeName || college.name,
     collegeCode: template.collegeCode || college.code,
   };

@@ -2,12 +2,57 @@ import React, { useState, useEffect } from 'react';
 import StudentForm from '../../components/forms/StudentForm';
 import IdCardPreview from '../../components/IdCard/IdCardPreview';
 import Toast from '../../components/common/Toast';
-import { SAMPLE_STUDENTS, SAMPLE_TEMPLATES } from '../../utils/sampleData';
+import { SAMPLE_TEMPLATES } from '../../utils/sampleData';
 import { validateStudent, validateStudentField } from '../../utils/validators';
 import { templateService } from '../../services/templateService';
+import { studentService } from '../../services/studentService';
+import { useAuth } from '../../context/AuthContext';
+
+const INITIAL_FORM_STATE = {
+  name: '',
+  rollNo: '',
+  roll_no: '',
+  department: 'Computer Science & Engineering',
+  department_name: 'Computer Science & Engineering',
+  department_id: 'dept-cse',
+  year: 1,
+  section: 'A',
+  dob: '',
+  gender: 'Male',
+  bloodGroup: 'O+',
+  blood_group: 'O+',
+  phone: '',
+  email: '',
+  address: '',
+  guardian_name: '',
+  photoUrl: '',
+  photo_url: '',
+  status: 'draft',
+  college_id: 'mitc',
+  collegeName: 'MIT College of Technology',
+  collegeCode: 'MITC',
+  validUntil: '2027-06-30',
+  valid_until: '2027-06-30',
+};
 
 export default function StudentHome() {
-  const [studentData, setStudentData] = useState({ ...SAMPLE_STUDENTS[0], status: 'draft' });
+  const { user } = useAuth();
+  const [studentData, setStudentData] = useState(() => {
+    try {
+      const saved = localStorage.getItem('cardcraft_current_student');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Could not read cached student application:', e);
+    }
+    return {
+      ...INITIAL_FORM_STATE,
+      email: user?.email || '',
+      name: user?.role === 'student' ? (user?.full_name || '') : '',
+      college_id: user?.college_id || 'mitc',
+      collegeName: user?.collegeName || 'MIT College of Technology',
+    };
+  });
+
   const [template, setTemplate] = useState({ ...SAMPLE_TEMPLATES.classicBlue });
   const [errors, setErrors] = useState({});
   const [rejectReason, setRejectReason] = useState('Please upload a clear passport photo with a plain white background.');
@@ -17,7 +62,7 @@ export default function StudentHome() {
   useEffect(() => {
     async function fetchCollegeTemplate() {
       try {
-        const collegeId = studentData.college_id || 'mitc';
+        const collegeId = studentData.college_id || user?.college_id || 'mitc';
         const t = await templateService.getTemplateByCollegeId(collegeId);
         if (t) setTemplate(t);
       } catch (err) {
@@ -25,7 +70,36 @@ export default function StudentHome() {
       }
     }
     fetchCollegeTemplate();
-  }, [studentData.college_id]);
+  }, [studentData.college_id, user?.college_id]);
+
+  // Subscribe to real-time status updates from College Dashboard
+  useEffect(() => {
+    const unsubscribe = studentService.subscribeToChanges((eventType, updated) => {
+      if (!updated) return;
+
+      // Check if the change applies to this student
+      const matches =
+        (studentData.id && updated.id === studentData.id) ||
+        (studentData.rollNo && (updated.rollNo === studentData.rollNo || updated.roll_no === studentData.rollNo));
+
+      if (matches) {
+        setStudentData((prev) => {
+          const merged = { ...prev, ...updated };
+          localStorage.setItem('cardcraft_current_student', JSON.stringify(merged));
+          return merged;
+        });
+
+        if (updated.status === 'approved') {
+          showToast(`🎉 Congratulations! Your ID card has been APPROVED by ${updated.approved_by || 'the College'}!`, 'success');
+        } else if (updated.status === 'rejected') {
+          if (updated.reject_reason) setRejectReason(updated.reject_reason);
+          showToast(`⚠️ Your card application was rejected. Please review feedback.`, 'error');
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [studentData.id, studentData.rollNo]);
 
   // Real-time update on every keystroke
   const handleFieldChange = (name, value) => {
@@ -45,12 +119,23 @@ export default function StudentHome() {
     }));
   };
 
-  const handleSaveDraft = () => {
-    setStudentData((prev) => ({ ...prev, status: 'draft' }));
-    showToast('Draft saved successfully! You can continue editing anytime.', 'info');
+  const handleSaveDraft = async () => {
+    try {
+      const collegeId = studentData.college_id || user?.college_id || 'mitc';
+      const drafted = await studentService.createStudent(collegeId, {
+        ...studentData,
+        status: 'draft',
+      });
+      setStudentData(drafted);
+      localStorage.setItem('cardcraft_current_student', JSON.stringify(drafted));
+      showToast('Draft saved successfully! You can continue editing anytime.', 'info');
+    } catch (err) {
+      console.error('Draft save failed:', err);
+      showToast('Draft saved locally.', 'info');
+    }
   };
 
-  const handleSubmitForApproval = () => {
+  const handleSubmitForApproval = async () => {
     const { isValid, errors: validationErrors } = validateStudent(studentData);
     if (!isValid) {
       setErrors(validationErrors);
@@ -58,8 +143,19 @@ export default function StudentHome() {
       return;
     }
 
-    setStudentData((prev) => ({ ...prev, status: 'submitted' }));
-    showToast('ID card submitted for college administration review!', 'success');
+    try {
+      const collegeId = studentData.college_id || user?.college_id || 'mitc';
+      const submitted = await studentService.createStudent(collegeId, {
+        ...studentData,
+        status: 'submitted',
+      });
+      setStudentData(submitted);
+      localStorage.setItem('cardcraft_current_student', JSON.stringify(submitted));
+      showToast('🚀 ID card submitted! Your application is now visible in the College Dashboard.', 'success');
+    } catch (err) {
+      console.error('Submission failed:', err);
+      showToast('Failed to submit application. Please try again.', 'error');
+    }
   };
 
   const showToast = (message, type = 'info') => {
@@ -67,9 +163,15 @@ export default function StudentHome() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  // Mock reviewer actions to test all states
+  // Status simulation for instant testing
   const handleSimulateStatus = (newStatus) => {
-    setStudentData((prev) => ({ ...prev, status: newStatus }));
+    setStudentData((prev) => {
+      const updated = { ...prev, status: newStatus };
+      if (newStatus === 'approved') updated.approved_by = 'Section In-Charge';
+      localStorage.setItem('cardcraft_current_student', JSON.stringify(updated));
+      studentService.broadcastChange('STUDENT_UPDATED', updated);
+      return updated;
+    });
     if (newStatus === 'approved') {
       showToast('College administration has APPROVED your ID card!', 'success');
     } else if (newStatus === 'rejected') {

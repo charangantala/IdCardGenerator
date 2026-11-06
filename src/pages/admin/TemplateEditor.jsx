@@ -55,8 +55,22 @@ export default function TemplateEditor() {
     loadCollegeTemplate();
   }, [id]);
 
+  const sampleFallbackStudent = {
+    name: 'Student Card Preview',
+    rollNo: `${college.code || 'COL'}-2024-042`,
+    department: 'Computer Science & Engineering',
+    year: 3,
+    section: 'A',
+    bloodGroup: 'O+',
+    phone: '9876543210',
+    email: `student@${(college.code || 'mitc').toLowerCase()}.edu`,
+    status: 'approved',
+    photoUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+    validUntil: '2027-06-30',
+  };
+
   const activeStudent = {
-    ...SAMPLE_STUDENTS[previewStudentIndex],
+    ...sampleFallbackStudent,
     collegeName: template.collegeName || college.name,
     collegeCode: template.collegeCode || college.code,
   };

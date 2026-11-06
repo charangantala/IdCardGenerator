@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import DepartmentCards from '../../components/filters/DepartmentCards';
 import YearTabs from '../../components/filters/YearTabs';
 import SectionFilter from '../../components/filters/SectionFilter';
@@ -11,11 +11,12 @@ import IdCard from '../../components/IdCard/IdCard';
 import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import Toast from '../../components/common/Toast';
-import { SAMPLE_DEPARTMENTS, SAMPLE_STUDENTS, SAMPLE_TEMPLATES } from '../../utils/sampleData';
+import { SAMPLE_DEPARTMENTS, SAMPLE_TEMPLATES } from '../../utils/sampleData';
 import { exportStudentsToCsv } from '../../utils/csv';
 import { downloadBatchCardsAsPdf } from '../../utils/downloadCard';
 import { useAuth } from '../../context/AuthContext';
 import { templateService } from '../../services/templateService';
+import { studentService } from '../../services/studentService';
 import {
   getStoredSections,
   saveStoredSections,
@@ -26,9 +27,10 @@ export default function CollegeHome() {
   const { user } = useAuth();
   const collegeName = user?.collegeName || 'MIT College of Technology';
 
-  // State
+  // State (All demo students removed; loaded live from database)
   const [departments, setDepartments] = useState([...SAMPLE_DEPARTMENTS]);
-  const [students, setStudents] = useState([...SAMPLE_STUDENTS]);
+  const [students, setStudents] = useState([]);
+  const [loadingStudents, setLoadingStudents] = useState(true);
   const [selectedDeptId, setSelectedDeptId] = useState(SAMPLE_DEPARTMENTS[0]?.id || 'dept-cse');
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedSection, setSelectedSection] = useState('all');
@@ -55,7 +57,7 @@ export default function CollegeHome() {
     collegeName,
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     async function loadTemplate() {
       try {
         const t = await templateService.getTemplateByCollegeId(user?.college_id || 'mitc');
@@ -65,6 +67,59 @@ export default function CollegeHome() {
       }
     }
     loadTemplate();
+  }, [user?.college_id]);
+
+  // Load students from database & subscribe to live submissions from Student portal
+  useEffect(() => {
+    let isMounted = true;
+    async function loadStudents() {
+      try {
+        setLoadingStudents(true);
+        const collegeId = user?.college_id || 'mitc';
+        const data = await studentService.getStudentsByCollege(collegeId);
+        if (isMounted) {
+          setStudents(data || []);
+        }
+      } catch (err) {
+        console.error('Failed to load students:', err);
+      } finally {
+        if (isMounted) setLoadingStudents(false);
+      }
+    }
+    loadStudents();
+
+    // Real-time synchronization: when a student submits their card from /student
+    const unsubscribe = studentService.subscribeToChanges((eventType, student) => {
+      if (!isMounted || !student) return;
+
+      setStudents((prev) => {
+        const index = prev.findIndex(
+          (s) =>
+            s.id === student.id ||
+            (student.roll_no && (s.rollNo === student.roll_no || s.roll_no === student.roll_no))
+        );
+        if (index !== -1) {
+          const updated = [...prev];
+          updated[index] = { ...updated[index], ...student };
+          return updated;
+        }
+        return [student, ...prev];
+      });
+
+      if (eventType === 'STUDENT_SUBMITTED' || eventType === 'INSERT') {
+        showToast(
+          `🔔 New card application received from ${student.name} (Year ${student.year}, Sec ${student.section || 'A'})!`,
+          'info'
+        );
+      } else if (eventType === 'STUDENT_DELETED' || eventType === 'DELETE') {
+        setStudents((prev) => prev.filter((s) => s.id !== student.id));
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [user?.college_id]);
 
   const [toast, setToast] = useState(null);
@@ -188,9 +243,19 @@ export default function CollegeHome() {
   // -------------------------------------------------------------
   // Bulk CSV Handlers
   // -------------------------------------------------------------
-  const handleBulkImportComplete = (importedStudents) => {
-    setStudents((prev) => [...importedStudents, ...prev]);
-    showToast(`Successfully imported ${importedStudents.length} students!`, 'success');
+  const handleBulkImportComplete = async (importedStudents) => {
+    const collegeId = user?.college_id || 'mitc';
+    const saved = [];
+    for (const st of importedStudents) {
+      try {
+        const result = await studentService.createStudent(collegeId, st);
+        saved.push(result);
+      } catch (e) {
+        console.error('Failed to import student:', st, e);
+      }
+    }
+    setStudents((prev) => [...saved, ...prev]);
+    showToast(`Successfully imported ${saved.length} students into database!`, 'success');
   };
 
   const handleExportCsv = () => {
@@ -313,27 +378,22 @@ export default function CollegeHome() {
     }));
   };
 
-  const handleStudentFormSubmit = () => {
+  const handleStudentFormSubmit = async () => {
     const s = studentModal.student;
     if (!s.name?.trim() || !s.rollNo?.trim()) {
       showToast('Please provide both student name and roll number.', 'error');
       return;
     }
+    const collegeId = user?.college_id || 'mitc';
 
-    if (s.id) {
-      setStudents((prev) => prev.map((item) => (item.id === s.id ? { ...item, ...s } : item)));
+    if (s.id && !s.id.startsWith('new-')) {
+      const updated = await studentService.updateStudent(collegeId, s.id, s);
+      setStudents((prev) => prev.map((item) => (item.id === s.id ? { ...item, ...updated } : item)));
       showToast(`Student "${s.name}" updated!`, 'success');
     } else {
-      const newStudent = {
-        ...s,
-        id: `stud-${Date.now()}`,
-        college_id: user?.college_id || 'mitc',
-        card_id: `card-${Date.now()}`,
-        validUntil: '2027-06-30',
-        collegeName,
-      };
-      setStudents((prev) => [newStudent, ...prev]);
-      showToast(`Student "${newStudent.name}" enrolled!`, 'success');
+      const created = await studentService.createStudent(collegeId, s);
+      setStudents((prev) => [created, ...prev.filter((item) => item.id !== created.id)]);
+      showToast(`Student "${created.name}" enrolled into database!`, 'success');
     }
     setStudentModal({ isOpen: false, student: null });
   };
@@ -342,10 +402,12 @@ export default function CollegeHome() {
     setDeleteConfirm({ isOpen: true, type: 'student', item: student });
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deleteConfirm.type === 'student') {
+      const collegeId = user?.college_id || 'mitc';
+      await studentService.deleteStudent(collegeId, deleteConfirm.item.id);
       setStudents((prev) => prev.filter((s) => s.id !== deleteConfirm.item.id));
-      showToast('Student record deleted.', 'info');
+      showToast('Student record deleted from database.', 'info');
     } else if (deleteConfirm.type === 'department') {
       setDepartments((prev) => prev.filter((d) => d.id !== deleteConfirm.item.id));
       const remaining = departments.filter((d) => d.id !== deleteConfirm.item.id);
@@ -355,7 +417,7 @@ export default function CollegeHome() {
     setDeleteConfirm({ isOpen: false, type: '', item: null });
   };
 
-  const handleApproveStudent = (student) => {
+  const handleApproveStudent = async (student) => {
     const advisor = getFacultyAdvisorForSection(
       sections,
       student.department_id,
@@ -363,6 +425,9 @@ export default function CollegeHome() {
       student.section || 'A'
     );
     const approverName = advisor?.name || 'Assigned Faculty Advisor';
+    const collegeId = user?.college_id || 'mitc';
+
+    await studentService.updateStatus(collegeId, student.id, 'approved', null, approverName);
 
     setStudents((prev) =>
       prev.map((s) =>
@@ -382,11 +447,14 @@ export default function CollegeHome() {
     });
   };
 
-  const handleConfirmReject = () => {
+  const handleConfirmReject = async () => {
     if (!rejectModal.reason.trim()) {
       showToast('Please specify a rejection reason.', 'error');
       return;
     }
+    const collegeId = user?.college_id || 'mitc';
+    await studentService.updateStatus(collegeId, rejectModal.student.id, 'rejected', rejectModal.reason.trim());
+
     setStudents((prev) =>
       prev.map((s) =>
         s.id === rejectModal.student.id
@@ -541,6 +609,7 @@ export default function CollegeHome() {
         {/* Student Table */}
         <StudentTable
           students={filteredStudents}
+          loading={loadingStudents}
           onViewCard={(student) => setCardPreviewModal({ isOpen: true, student })}
           onEdit={(student) => setStudentModal({ isOpen: true, student })}
           onDelete={handleDeleteStudent}
