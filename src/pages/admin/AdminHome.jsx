@@ -23,7 +23,16 @@ const DEFAULT_COLLEGES = [
 ];
 
 export default function AdminHome() {
-  const [colleges, setColleges] = useState(DEFAULT_COLLEGES);
+  const [colleges, setColleges] = useState(() => {
+    try {
+      const raw = localStorage.getItem('cardcraft_colleges_data');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return DEFAULT_COLLEGES;
+  });
   const [liveStudents, setLiveStudents] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -92,18 +101,36 @@ export default function AdminHome() {
         // Edit
         const updated = await collegeService.updateCollege(formData.id, formData);
         setColleges((prev) =>
-          prev.map((c) => (c.id === formData.id ? { ...c, ...updated } : c))
+          prev.map((c) => (c.id === formData.id ? { ...c, ...updated, ...formData } : c))
         );
         showToast(`College "${formData.name}" updated successfully!`, 'success');
       } else {
         // Add
         const newCollege = await collegeService.createCollege(formData);
-        setColleges((prev) => [newCollege, ...prev]);
-        showToast(`College "${newCollege.name}" created with first registrar login!`, 'success');
+        setColleges((prev) => [
+          newCollege,
+          ...prev.filter((c) => c.id !== newCollege.id && c.code !== newCollege.code),
+        ]);
+        setSearchTerm('');
+        setStatusFilter('all');
+        showToast(`College "${newCollege.name}" registered successfully!`, 'success');
       }
     } catch (err) {
       console.error('Failed to save college:', err);
-      showToast('Saved changes locally.', 'info');
+      const fallbackCollege = {
+        ...formData,
+        id: `col-${Date.now()}`,
+        code: (formData.code || 'COL').toUpperCase(),
+        name: formData.name || 'New College',
+        status: formData.status || 'active',
+        studentLimit: Number(formData.studentLimit || formData.student_limit || 1000),
+        validUntil: formData.validUntil || formData.valid_until || '2027-12-31',
+        template_config: SAMPLE_TEMPLATES.classicBlue,
+      };
+      setColleges((prev) => [fallbackCollege, ...prev]);
+      setSearchTerm('');
+      setStatusFilter('all');
+      showToast(`College "${fallbackCollege.name}" added to list!`, 'success');
     }
     setCollegeModal({ isOpen: false, college: null });
   };

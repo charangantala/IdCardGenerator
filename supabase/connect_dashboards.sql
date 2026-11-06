@@ -106,3 +106,4 @@ VALUES
     4,
     'Robotics, thermodynamics, machine design'
 ) ON CONFLICT (id) DO NOTHING;
+
