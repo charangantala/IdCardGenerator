@@ -88,7 +88,26 @@ export const templateService = {
   },
 
   /**
-   * Update template config (Admin only)
+   * Broadcast template changes to other windows/dashboards
+   */
+  broadcastTemplateChange(collegeId, template) {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('cardcraft:template_change', { detail: { collegeId, template } })
+        );
+        if (window.BroadcastChannel) {
+          const bc = new BroadcastChannel('cardcraft_realtime');
+          bc.postMessage({ type: 'TEMPLATE_UPDATED', collegeId, template });
+        }
+      }
+    } catch (e) {
+      console.warn('Template broadcast error:', e);
+    }
+  },
+
+  /**
+   * Update template config (College or Admin)
    */
   async updateTemplate(collegeId, templateConfig) {
     const key = (collegeId || 'mitc').toLowerCase();
@@ -100,6 +119,9 @@ export const templateService = {
       ...templateConfig,
     };
     saveLocalTemplates(localTemplates);
+
+    // Broadcast across windows so Student portal updates immediately
+    this.broadcastTemplateChange(collegeId, localTemplates[key]);
 
     // 2. If Supabase is connected, attempt saving to PostgreSQL
     if (isSupabaseConfigured() && supabase) {

@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { collegeService } from '../services/collegeService';
 import Input from '../components/common/Input';
 import Button from '../components/common/Button';
 
@@ -40,7 +41,7 @@ const ROLE_CONFIGS = {
   student: {
     key: 'student',
     title: 'Student Credential Portal',
-    subtitle: 'Fill your profile details, preview your ID card, and download when approved',
+    subtitle: 'Select your college, sign in or register, and apply for your official digital ID card',
     icon: '🎓',
     badgeText: 'Student',
     themeColor: 'emerald',
@@ -50,7 +51,7 @@ const ROLE_CONFIGS = {
     buttonBg: 'bg-emerald-600 hover:bg-emerald-700',
     demoEmail: 'student@mitc.com',
     demoPassword: 'Student@123',
-    demoLabel: 'Use Student (Alex) Demo Credentials',
+    demoLabel: 'Use Student Demo Credentials',
     targetRoute: '/student',
   },
 };
@@ -58,7 +59,7 @@ const ROLE_CONFIGS = {
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { login } = useAuth();
+  const { login, registerStudent } = useAuth();
 
   // Read role from query param (?role=admin | college | student) or default to 'college'
   const initialRole = searchParams.get('role');
@@ -68,10 +69,56 @@ export default function Login() {
 
   const currentConfig = ROLE_CONFIGS[selectedRole];
 
+  // Colleges list for multi-tenant student selection
+  const [colleges, setColleges] = useState([]);
+  const [selectedCollegeId, setSelectedCollegeId] = useState('mitc');
+  const [studentAuthMode, setStudentAuthMode] = useState('signin'); // 'signin' | 'register'
+
+  // Form Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [rollNo, setRollNo] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Load all registered colleges on mount
+  useEffect(() => {
+    async function loadColleges() {
+      try {
+        const list = await collegeService.getColleges();
+        if (list && list.length > 0) {
+          setColleges(list);
+          setSelectedCollegeId(list[0].id || list[0].code || 'mitc');
+        }
+      } catch (err) {
+        console.warn('Failed to load colleges in Login:', err);
+      }
+    }
+    loadColleges();
+  }, []);
+
+  const selectedCollege = useMemo(() => {
+    if (!colleges || colleges.length === 0) {
+      return { id: 'mitc', name: 'MIT College of Technology', code: 'MITC' };
+    }
+    return (
+      colleges.find(
+        (c) =>
+          c.id === selectedCollegeId ||
+          c.code?.toLowerCase() === selectedCollegeId?.toLowerCase()
+      ) || colleges[0]
+    );
+  }, [colleges, selectedCollegeId]);
+
+  const studentDemoEmail = useMemo(() => {
+    const code = (selectedCollege?.code || 'mitc').toLowerCase();
+    if (code === 'mitc') return 'student@mitc.com';
+    if (code === 'ait') return 'student@ait.com';
+    if (code === 'sec') return 'student@sec.com';
+    return `student@${code}.edu`;
+  }, [selectedCollege]);
 
   // When tab changes, pre-populate demo hints and reset errors
   const handleRoleSelect = (roleKey) => {
@@ -80,11 +127,20 @@ export default function Login() {
     setError('');
     setEmail('');
     setPassword('');
+    setFullName('');
+    setRollNo('');
+    setConfirmPassword('');
   };
 
   const handleFillDemo = () => {
-    setEmail(currentConfig.demoEmail);
-    setPassword(currentConfig.demoPassword);
+    if (selectedRole === 'student') {
+      setEmail(studentDemoEmail);
+      setPassword('Student@123');
+      setStudentAuthMode('signin');
+    } else {
+      setEmail(currentConfig.demoEmail);
+      setPassword(currentConfig.demoPassword);
+    }
     setError('');
   };
 
@@ -99,7 +155,45 @@ export default function Login() {
 
     try {
       setLoading(true);
-      const authenticatedUser = await login(email, password);
+
+      if (selectedRole === 'student') {
+        if (!selectedCollege) {
+          throw new Error('Please select your college / institution from the dropdown.');
+        }
+
+        if (studentAuthMode === 'register') {
+          if (!fullName.trim()) {
+            throw new Error('Please enter your full student name.');
+          }
+          if (password !== confirmPassword) {
+            throw new Error('Passwords do not match.');
+          }
+          if (password.length < 6) {
+            throw new Error('Password must be at least 6 characters.');
+          }
+
+          await registerStudent({
+            fullName: fullName.trim(),
+            rollNo:
+              rollNo.trim() ||
+              `${selectedCollege.code || 'COL'}-2024-${Math.floor(100 + Math.random() * 900)}`,
+            email: email.trim(),
+            password,
+            college: selectedCollege,
+          });
+
+          navigate('/student', { replace: true });
+          return;
+        } else {
+          // Sign In
+          const authenticatedUser = await login(email, password, 'student', selectedCollege);
+          navigate('/student', { replace: true });
+          return;
+        }
+      }
+
+      // College / Admin login
+      const authenticatedUser = await login(email, password, selectedRole);
 
       // Verify the user is logging into the appropriate portal
       if (authenticatedUser.role !== selectedRole && authenticatedUser.role !== 'admin') {
@@ -113,8 +207,6 @@ export default function Login() {
         navigate('/admin', { replace: true });
       } else if (authenticatedUser.role === 'college') {
         navigate('/college', { replace: true });
-      } else if (authenticatedUser.role === 'student') {
-        navigate('/student', { replace: true });
       } else {
         navigate('/', { replace: true });
       }
@@ -215,20 +307,127 @@ export default function Login() {
             </div>
           )}
 
+          {/* Student-Specific: Select College / Institution & Mode Switch */}
+          {selectedRole === 'student' && (
+            <div className="space-y-4 p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200">
+              <div>
+                <label
+                  htmlFor="college-select"
+                  className="block text-xs font-bold uppercase tracking-wider text-emerald-950 mb-1.5 flex items-center justify-between"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>🏛️</span>
+                    <span>Select Your College / Institution *</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-100 px-2 py-0.5 rounded-full">
+                    Multi-Tenant Routing
+                  </span>
+                </label>
+                <select
+                  id="college-select"
+                  value={selectedCollegeId}
+                  onChange={(e) => {
+                    setSelectedCollegeId(e.target.value);
+                    setError('');
+                  }}
+                  className="w-full text-sm font-semibold px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none shadow-xs text-gray-900 cursor-pointer"
+                >
+                  {colleges.map((col) => (
+                    <option key={col.id} value={col.id} disabled={col.status === 'suspended'}>
+                      {col.name} ({col.code || 'COL'}) {col.status === 'suspended' ? '— [Suspended]' : ''}
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center justify-between mt-2 text-[11px] text-emerald-800">
+                  <span className="flex items-center gap-1 font-medium">
+                    <span>✓</span> Card & data routed to: <strong>{selectedCollege.name}</strong>
+                  </span>
+                  <span className="font-mono text-xs bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded-md font-bold">
+                    {selectedCollege.code}
+                  </span>
+                </div>
+              </div>
+
+              {/* Sub-Switch: Sign In vs New Student Registration */}
+              <div className="grid grid-cols-2 gap-2 bg-emerald-100/70 p-1 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudentAuthMode('signin');
+                    setError('');
+                  }}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                    studentAuthMode === 'signin'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-emerald-900/80 hover:text-emerald-950'
+                  }`}
+                >
+                  🔑 Student Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudentAuthMode('register');
+                    setError('');
+                  }}
+                  className={`py-2 text-xs font-bold rounded-lg transition-all ${
+                    studentAuthMode === 'register'
+                      ? 'bg-white text-emerald-800 shadow-xs'
+                      : 'text-emerald-900/80 hover:text-emerald-950'
+                  }`}
+                >
+                  📝 New Student Register
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Controlled Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
+            {selectedRole === 'student' && studentAuthMode === 'register' && (
+              <>
+                <Input
+                  label="Full Student Name *"
+                  id="fullName"
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="e.g. Rahul Sharma"
+                  required
+                />
+                <Input
+                  label={`Roll Number / Student ID (Optional)`}
+                  id="rollNo"
+                  type="text"
+                  value={rollNo}
+                  onChange={(e) => setRollNo(e.target.value)}
+                  placeholder={`e.g. ${selectedCollege.code || 'COL'}-2024-001`}
+                />
+              </>
+            )}
+
             <Input
-              label={`${currentConfig.badgeText} Email`}
+              label={
+                selectedRole === 'student'
+                  ? studentAuthMode === 'register'
+                    ? 'Student Email Address *'
+                    : `Student Email or Roll Number * (${selectedCollege.code})`
+                  : `${currentConfig.badgeText} Email *`
+              }
               id="email"
-              type="email"
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={`e.g. ${currentConfig.demoEmail}`}
+              placeholder={
+                selectedRole === 'student'
+                  ? `e.g. ${studentDemoEmail}`
+                  : `e.g. ${currentConfig.demoEmail}`
+              }
               required
             />
 
             <Input
-              label="Password"
+              label="Password *"
               id="password"
               type="password"
               value={password}
@@ -237,13 +436,31 @@ export default function Login() {
               required
             />
 
+            {selectedRole === 'student' && studentAuthMode === 'register' && (
+              <Input
+                label="Confirm Password *"
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+            )}
+
             <Button
               type="submit"
               variant="primary"
               className={`w-full py-2.5 text-white ${currentConfig.buttonBg}`}
               disabled={loading}
             >
-              {loading ? 'Signing In...' : `Sign In to ${currentConfig.badgeText} Portal`}
+              {loading
+                ? 'Processing...'
+                : selectedRole === 'student'
+                ? studentAuthMode === 'register'
+                  ? `Register & Apply for ${selectedCollege.code} ID Card →`
+                  : `Sign In to ${selectedCollege.code} Student Portal →`
+                : `Sign In to ${currentConfig.badgeText} Portal`}
             </Button>
           </form>
 
@@ -251,10 +468,15 @@ export default function Login() {
           <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
             <div>
               <span className="font-bold text-gray-800 block">
-                Testing this portal?
+                Testing{' '}
+                {selectedRole === 'student'
+                  ? `${selectedCollege.code} Student`
+                  : currentConfig.badgeText}{' '}
+                portal?
               </span>
               <span className="text-[11px] text-gray-500 font-mono">
-                {currentConfig.demoEmail} • {currentConfig.demoPassword}
+                {selectedRole === 'student' ? studentDemoEmail : currentConfig.demoEmail} •{' '}
+                {selectedRole === 'student' ? 'Student@123' : currentConfig.demoPassword}
               </span>
             </div>
 

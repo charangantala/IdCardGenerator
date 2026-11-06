@@ -37,39 +37,106 @@ const INITIAL_FORM_STATE = {
 
 export default function StudentHome() {
   const { user } = useAuth();
+  const collegeId = user?.college_id || 'mitc';
+  const collegeName = user?.collegeName || 'MIT College of Technology';
+  const collegeCode = user?.collegeCode || user?.code || 'MITC';
+
   const [studentData, setStudentData] = useState(() => {
+    const cacheKey = `cardcraft_student_${collegeId}_${user?.email || 'default'}`;
     try {
-      const saved = localStorage.getItem('cardcraft_current_student');
-      if (saved) return JSON.parse(saved);
+      const saved = localStorage.getItem(cacheKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...parsed,
+          college_id: collegeId,
+          collegeName,
+          collegeCode,
+        };
+      }
     } catch (e) {
       console.warn('Could not read cached student application:', e);
     }
     return {
       ...INITIAL_FORM_STATE,
       email: user?.email || '',
-      name: user?.role === 'student' ? (user?.full_name || '') : '',
-      college_id: user?.college_id || 'mitc',
-      collegeName: user?.collegeName || 'MIT College of Technology',
+      name: user?.full_name || '',
+      rollNo: user?.roll_no || `${collegeCode}-2024-001`,
+      roll_no: user?.roll_no || `${collegeCode}-2024-001`,
+      college_id: collegeId,
+      collegeName,
+      collegeCode,
     };
   });
+
+  // Sync state if user context or college changes
+  useEffect(() => {
+    if (user) {
+      const cId = user.college_id || 'mitc';
+      const cName = user.collegeName || 'MIT College of Technology';
+      const cCode = user.collegeCode || user.code || 'MITC';
+      setStudentData((prev) => ({
+        ...prev,
+        college_id: cId,
+        collegeName: cName,
+        collegeCode: cCode,
+        email: user.email || prev.email,
+        name: user.full_name || prev.name,
+        rollNo: user.roll_no || prev.rollNo || `${cCode}-2024-001`,
+        roll_no: user.roll_no || prev.roll_no || `${cCode}-2024-001`,
+      }));
+    }
+  }, [user]);
 
   const [template, setTemplate] = useState({ ...SAMPLE_TEMPLATES.classicBlue });
   const [errors, setErrors] = useState({});
   const [rejectReason, setRejectReason] = useState('Please upload a clear passport photo with a plain white background.');
   const [toast, setToast] = useState(null);
 
-  // Load college's active template (including logo & colors)
+  // Load college's active template (including logo & colors) and listen for updates
   useEffect(() => {
     async function fetchCollegeTemplate() {
       try {
-        const collegeId = studentData.college_id || user?.college_id || 'mitc';
-        const t = await templateService.getTemplateByCollegeId(collegeId);
+        const targetCollegeId = user?.college_id || studentData.college_id || 'mitc';
+        const t = await templateService.getTemplateByCollegeId(targetCollegeId);
         if (t) setTemplate(t);
       } catch (err) {
         console.error('Failed to load template in student view:', err);
       }
     }
     fetchCollegeTemplate();
+
+    const handleTemplateEvent = (e) => {
+      const targetCollegeId = studentData.college_id || user?.college_id || 'mitc';
+      if (e.detail?.template && (!e.detail?.collegeId || e.detail.collegeId.toLowerCase() === targetCollegeId.toLowerCase())) {
+        setTemplate(e.detail.template);
+        showToast('🎨 Official ID card template design updated by your college!', 'info');
+      }
+    };
+    window.addEventListener('cardcraft:template_change', handleTemplateEvent);
+
+    let bc = null;
+    try {
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        bc = new BroadcastChannel('cardcraft_realtime');
+        bc.onmessage = (event) => {
+          if (event.data?.type === 'TEMPLATE_UPDATED' && event.data?.template) {
+            const targetCollegeId = studentData.college_id || user?.college_id || 'mitc';
+            if (!event.data.collegeId || event.data.collegeId.toLowerCase() === targetCollegeId.toLowerCase()) {
+              setTemplate(event.data.template);
+              showToast('🎨 Official ID card template design updated by your college!', 'info');
+            }
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error in student:', e);
+    }
+
+    return () => {
+      window.removeEventListener('cardcraft:template_change', handleTemplateEvent);
+      if (bc) bc.close();
+    };
   }, [studentData.college_id, user?.college_id]);
 
   // Subscribe to real-time status updates from College Dashboard
@@ -121,13 +188,16 @@ export default function StudentHome() {
 
   const handleSaveDraft = async () => {
     try {
-      const collegeId = studentData.college_id || user?.college_id || 'mitc';
-      const drafted = await studentService.createStudent(collegeId, {
+      const targetCollegeId = user?.college_id || studentData.college_id || 'mitc';
+      const drafted = await studentService.createStudent(targetCollegeId, {
         ...studentData,
+        college_id: targetCollegeId,
+        collegeName: user?.collegeName || studentData.collegeName,
+        collegeCode: user?.collegeCode || studentData.collegeCode,
         status: 'draft',
       });
       setStudentData(drafted);
-      localStorage.setItem('cardcraft_current_student', JSON.stringify(drafted));
+      localStorage.setItem(`cardcraft_student_${targetCollegeId}_${user?.email || 'default'}`, JSON.stringify(drafted));
       showToast('Draft saved successfully! You can continue editing anytime.', 'info');
     } catch (err) {
       console.error('Draft save failed:', err);
@@ -144,14 +214,21 @@ export default function StudentHome() {
     }
 
     try {
-      const collegeId = studentData.college_id || user?.college_id || 'mitc';
-      const submitted = await studentService.createStudent(collegeId, {
+      const targetCollegeId = user?.college_id || studentData.college_id || 'mitc';
+      const toSubmit = {
         ...studentData,
+        college_id: targetCollegeId,
+        collegeName: user?.collegeName || studentData.collegeName,
+        collegeCode: user?.collegeCode || studentData.collegeCode,
         status: 'submitted',
-      });
+      };
+      const submitted = await studentService.createStudent(targetCollegeId, toSubmit);
       setStudentData(submitted);
-      localStorage.setItem('cardcraft_current_student', JSON.stringify(submitted));
-      showToast('🚀 ID card submitted! Your application is now visible in the College Dashboard.', 'success');
+      localStorage.setItem(`cardcraft_student_${targetCollegeId}_${user?.email || 'default'}`, JSON.stringify(submitted));
+      showToast(
+        `🚀 ID card submitted! Your application has been sent directly to ${user?.collegeName || studentData.collegeName} dashboard.`,
+        'success'
+      );
     } catch (err) {
       console.error('Submission failed:', err);
       showToast('Failed to submit application. Please try again.', 'error');
@@ -168,7 +245,8 @@ export default function StudentHome() {
     setStudentData((prev) => {
       const updated = { ...prev, status: newStatus };
       if (newStatus === 'approved') updated.approved_by = 'Section In-Charge';
-      localStorage.setItem('cardcraft_current_student', JSON.stringify(updated));
+      const targetCollegeId = user?.college_id || studentData.college_id || 'mitc';
+      localStorage.setItem(`cardcraft_student_${targetCollegeId}_${user?.email || 'default'}`, JSON.stringify(updated));
       studentService.broadcastChange('STUDENT_UPDATED', updated);
       return updated;
     });
@@ -190,14 +268,23 @@ export default function StudentHome() {
       {/* Top Banner & Title */}
       <div className="border-b pb-4 flex flex-wrap justify-between items-center gap-4">
         <div>
-          <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded">
-            Student Portal
-          </span>
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest bg-emerald-50 px-2 py-0.5 rounded">
+              Student Portal
+            </span>
+            <span className="text-xs font-bold text-blue-800 bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-200 flex items-center gap-1">
+              <span>🏛️</span>
+              <span>{studentData.collegeName || user?.collegeName || 'MIT College of Technology'}</span>
+              <span className="text-blue-500 font-mono text-[10px]">
+                ({studentData.collegeCode || user?.collegeCode || 'MITC'})
+              </span>
+            </span>
+          </div>
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight mt-1">
             Student ID Card Application
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            Fill in your details on the left. The live ID card preview updates instantly on every keystroke.
+            Enrolled at <strong className="text-gray-900">{studentData.collegeName}</strong>. Your submitted card is reviewed by your designated Section In-Charge faculty.
           </p>
         </div>
 
@@ -336,6 +423,15 @@ export default function StudentHome() {
         {/* Right Column: Live Sticky Card Preview with Real PNG/PDF Export */}
         <div className="lg:col-span-5 sticky top-20">
           <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <div className="mb-3 pb-2 border-b border-gray-100 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                <span>🎓</span>
+                <span>Official Institution ID Template</span>
+              </span>
+              <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200">
+                {template.layout === 'horizontal' ? 'Horizontal Card' : 'Vertical Card'}
+              </span>
+            </div>
             <IdCardPreview
               student={studentData}
               template={template}

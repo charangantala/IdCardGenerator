@@ -134,7 +134,7 @@ export function AuthProvider({ children }) {
   const actualRole = user?.role || null;
   const effectiveRole = user?.role === 'admin' && viewAsRole ? viewAsRole : actualRole;
 
-  const login = async (email, password) => {
+  const login = async (email, password, roleHint = null, selectedCollege = null) => {
     const trimmedEmail = email.trim().toLowerCase();
 
     // 1. Check known Demo Credentials
@@ -142,7 +142,7 @@ export function AuthProvider({ children }) {
       (u) => u.email.toLowerCase() === trimmedEmail && u.password === password
     );
 
-    // 2. Check dynamically registered users (from newly created colleges)
+    // 2. Check dynamically registered users (from newly created colleges and students)
     let registeredUser = null;
     try {
       const rawUsers = localStorage.getItem('cardcraft_registered_users');
@@ -186,7 +186,32 @@ export function AuthProvider({ children }) {
       console.warn('Error checking stored colleges for login:', e);
     }
 
-    const matchedUser = demoUser || registeredUser || collegeMatchUser;
+    let matchedUser = demoUser || registeredUser || collegeMatchUser;
+
+    // 4. If student login with selected college, bind to that college
+    if (roleHint === 'student' && selectedCollege) {
+      if (matchedUser && (matchedUser.role === 'student' || matchedUser.id === 'usr-student-1')) {
+        matchedUser = {
+          ...matchedUser,
+          college_id: selectedCollege.id,
+          collegeName: selectedCollege.name,
+          collegeCode: selectedCollege.code,
+        };
+      } else if (!matchedUser && password === 'Student@123') {
+        // Fast-path for testing: auto-provision demo student for the selected college
+        matchedUser = {
+          id: `usr-stud-${(selectedCollege.code || 'col').toLowerCase()}-${Date.now().toString().slice(-4)}`,
+          email: trimmedEmail,
+          role: 'student',
+          full_name: `${selectedCollege.code || 'COL'} Student`,
+          roll_no: `${selectedCollege.code || 'COL'}-2024-001`,
+          college_id: selectedCollege.id,
+          collegeName: selectedCollege.name,
+          collegeCode: selectedCollege.code,
+          status: 'active',
+        };
+      }
+    }
 
     if (matchedUser) {
       if (matchedUser.status === 'suspended') {
@@ -201,7 +226,7 @@ export function AuthProvider({ children }) {
       return matchedUser;
     }
 
-    // 4. If Supabase is connected, attempt Supabase Auth login
+    // 5. If Supabase is connected, attempt Supabase Auth login
     if (isSupabaseConfigured() && supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -230,9 +255,9 @@ export function AuthProvider({ children }) {
           email: data.user.email,
           role: profile.role,
           full_name: profile.full_name,
-          college_id: profile.college_id,
-          collegeName: profile.colleges?.name,
-          collegeCode: profile.colleges?.code,
+          college_id: selectedCollege?.id || profile.college_id,
+          collegeName: selectedCollege?.name || profile.colleges?.name,
+          collegeCode: selectedCollege?.code || profile.colleges?.code,
           status: 'active',
         };
 
@@ -245,6 +270,57 @@ export function AuthProvider({ children }) {
     }
 
     throw new Error('Invalid email or password. Please check your credentials.');
+  };
+
+  /**
+   * Register a new student strictly bound to their selected college
+   */
+  const registerStudent = async ({ fullName, rollNo, email, password, college }) => {
+    if (!college || !college.id) {
+      throw new Error('Please select your college/institution.');
+    }
+    const trimmedEmail = email.trim().toLowerCase();
+
+    // Check if email already registered for this college
+    try {
+      const rawUsers = localStorage.getItem('cardcraft_registered_users');
+      const users = rawUsers ? JSON.parse(rawUsers) : [];
+
+      const existing = users.find(
+        (u) =>
+          u.email?.toLowerCase() === trimmedEmail &&
+          (u.college_id === college.id || u.collegeCode === college.code)
+      );
+
+      if (existing) {
+        throw new Error(
+          `A student account with email "${trimmedEmail}" is already registered at ${college.name}. Please sign in instead.`
+        );
+      }
+
+      const newStudentUser = {
+        id: `usr-stud-${Date.now()}`,
+        email: trimmedEmail,
+        password,
+        role: 'student',
+        full_name: fullName.trim(),
+        roll_no: rollNo?.trim() || `${college.code || 'COL'}-2024-${Math.floor(100 + Math.random() * 900)}`,
+        college_id: college.id,
+        collegeName: college.name,
+        collegeCode: college.code,
+        status: 'active',
+        created_at: new Date().toISOString(),
+      };
+
+      users.push(newStudentUser);
+      localStorage.setItem('cardcraft_registered_users', JSON.stringify(users));
+
+      setUser(newStudentUser);
+      setViewAsRole(null);
+      return newStudentUser;
+    } catch (err) {
+      throw new Error(err.message || 'Registration failed.');
+    }
   };
 
   const logout = async () => {
@@ -281,6 +357,7 @@ export function AuthProvider({ children }) {
         setViewAs,
         clearViewAs,
         login,
+        registerStudent,
         logout,
         isAuthenticated: !!user,
         loading,

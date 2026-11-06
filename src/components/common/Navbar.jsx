@@ -40,12 +40,14 @@ export default function Navbar() {
       return [{ label: 'Sign In', path: '/login' }];
     }
 
-    const links = [{ label: 'Card Showcase', path: '/cards-test' }];
+    const links = [];
 
     if (role === 'admin') {
       links.push({ label: 'Colleges & Templates', path: '/admin' });
+      links.push({ label: 'Card Showcase', path: '/cards-test' });
     } else if (role === 'college') {
-      links.push({ label: 'Department Portal', path: '/college' });
+      links.push({ label: 'Students & Approvals', path: '/college' });
+      links.push({ label: 'Card Showcase & Studio', path: '/college?tab=templates' });
     } else if (role === 'student') {
       links.push({ label: 'My ID Card', path: '/student' });
     }

@@ -155,7 +155,12 @@ export const studentService = {
     // Fallback to live store (persists across student submissions & college dashboard)
     const stored = getStoredLiveStudents();
     return stored.filter((s) => {
-      if (collegeId && (s.college_id || 'mitc') !== collegeId) return false;
+      if (collegeId) {
+        const target = collegeId.toLowerCase();
+        const sCol = (s.college_id || 'mitc').toLowerCase();
+        const sCode = (s.collegeCode || '').toLowerCase();
+        if (sCol !== target && sCode !== target) return false;
+      }
       if (filters.departmentId && s.department_id !== filters.departmentId) return false;
       if (filters.year && filters.year !== 'all' && Number(s.year) !== Number(filters.year)) return false;
       if (filters.section && filters.section !== 'all' && (s.section || 'A').toUpperCase() !== filters.section.toUpperCase()) return false;
@@ -178,6 +183,8 @@ export const studentService = {
       ...studentData,
       id: studentData.id || `stud-${Date.now()}`,
       college_id: collegeId,
+      collegeName: studentData.collegeName,
+      collegeCode: studentData.collegeCode,
       card_id: studentData.card_id || `card-${Date.now()}`,
       name: studentData.name,
       roll_no: studentData.rollNo || studentData.roll_no,
