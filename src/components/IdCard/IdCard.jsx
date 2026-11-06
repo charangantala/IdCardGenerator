@@ -46,6 +46,25 @@ export default function IdCard({ student = {}, template = {} }) {
     template?.footerText ?? 'If found, please return to the college office.';
   const cornerRadius = template?.cornerRadius !== undefined ? template.cornerRadius : 14;
 
+  // College Branding & Logo
+  const collegeName =
+    template?.collegeName ||
+    student?.collegeName ||
+    student?.college_name ||
+    'COLLEGE / UNIVERSITY NAME';
+  const collegeCode =
+    template?.collegeCode ||
+    student?.collegeCode ||
+    student?.college_code ||
+    '';
+  const collegeLogo =
+    template?.collegeLogo ||
+    template?.logo_url ||
+    student?.collegeLogo ||
+    student?.logo_url ||
+    '';
+  const logoSize = Number(template?.logoSize) || 40;
+
   // Student details normalized
   const name = student?.name || 'STUDENT NAME';
   const rollNo = student?.rollNo || student?.roll_no || 'ROLL NUMBER';
@@ -60,12 +79,6 @@ export default function IdCard({ student = {}, template = {} }) {
   const dob = student?.dob || '—';
   const validUntil = student?.validUntil || student?.valid_until || '2026-06-30';
   const photoUrl = student?.photoUrl || student?.photo_url || '';
-  const collegeName =
-    student?.collegeName ||
-    student?.college_name ||
-    template?.collegeName ||
-    'COLLEGE / UNIVERSITY NAME';
-  const collegeCode = student?.collegeCode || student?.college_code || '';
   const cardId = student?.card_id || student?.cardId || student?.id || 'demo-card-id';
   const verifyUrl =
     typeof window !== 'undefined'
@@ -117,22 +130,41 @@ export default function IdCard({ student = {}, template = {} }) {
         className="absolute bottom-0 left-0 right-0 h-1"
         style={{ backgroundColor: colors.secondary }}
       />
-      <div className={`flex gap-2.5 ${getHeaderAlignment()}`}>
+      <div className={`flex gap-3 items-center ${getHeaderAlignment()}`}>
         {/* College Logo / Monogram */}
-        <div
-          className="w-10 h-10 flex-shrink-0 rounded-lg flex items-center justify-center font-bold text-xs uppercase shadow-sm border border-white/20"
-          style={{
-            backgroundColor: colors.secondary,
-            color: '#ffffff',
-          }}
-        >
-          {collegeCode || 'COL'}
-        </div>
+        {collegeLogo ? (
+          <div
+            className="flex-shrink-0 flex items-center justify-center overflow-hidden rounded-xl bg-white/10 p-1 border border-white/20 shadow-xs"
+            style={{
+              width: `${logoSize}px`,
+              height: `${logoSize}px`,
+            }}
+          >
+            <img
+              src={collegeLogo}
+              alt={`${collegeName} Logo`}
+              className="w-full h-full object-contain"
+            />
+          </div>
+        ) : (
+          <div
+            className="flex-shrink-0 rounded-xl flex items-center justify-center font-extrabold text-xs uppercase shadow-sm border border-white/20"
+            style={{
+              width: `${logoSize}px`,
+              height: `${logoSize}px`,
+              backgroundColor: colors.secondary,
+              color: '#ffffff',
+            }}
+          >
+            {collegeCode || 'COL'}
+          </div>
+        )}
+
         <div className="flex-1 min-w-0">
           <h2 className="text-xs sm:text-sm font-bold uppercase tracking-wider leading-tight truncate">
             {collegeName}
           </h2>
-          <span className="text-[10px] opacity-90 tracking-widest uppercase font-medium">
+          <span className="text-[10px] opacity-90 tracking-widest uppercase font-medium block mt-0.5">
             Student Identity Card
           </span>
         </div>

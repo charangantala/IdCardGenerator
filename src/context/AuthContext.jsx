@@ -65,12 +65,11 @@ export function AuthProvider({ children }) {
     return localStorage.getItem('cardcraft_view_as') || null;
   });
 
-  const [loading, setLoading] = useState(isSupabaseConfigured());
+  const [loading, setLoading] = useState(false);
 
   // Listen for Supabase session changes when connected
   useEffect(() => {
     if (!isSupabaseConfigured() || !supabase) {
-      setLoading(false);
       return;
     }
 
@@ -78,7 +77,6 @@ export function AuthProvider({ children }) {
       async (event, session) => {
         if (session?.user) {
           try {
-            // Fetch profile
             const { data: profile, error } = await supabase
               .from('profiles')
               .select('*, colleges(name, code, status, valid_until)')
@@ -87,7 +85,6 @@ export function AuthProvider({ children }) {
 
             if (!error && profile) {
               const college = profile.colleges;
-              // Check suspension
               if (college?.status === 'suspended') {
                 await supabase.auth.signOut();
                 setUser(null);
@@ -108,11 +105,7 @@ export function AuthProvider({ children }) {
           } catch (e) {
             console.error('Error fetching user profile:', e);
           }
-        } else {
-          // If no session on supabase, clear user if supabase was active
-          // (keep local session if falling back to mock)
         }
-        setLoading(false);
       }
     );
 
@@ -144,71 +137,77 @@ export function AuthProvider({ children }) {
   const login = async (email, password) => {
     const trimmedEmail = email.trim().toLowerCase();
 
-    // 1. If Supabase is connected, sign in with real Supabase Auth
-    if (isSupabaseConfigured() && supabase) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password,
-      });
-
-      if (error) throw error;
-
-      // Fetch profile
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('*, colleges(name, code, status, valid_until)')
-        .eq('id', data.user.id)
-        .single();
-
-      if (profileErr) throw profileErr;
-
-      // Section 8.1 suspension check
-      if (profile.colleges?.status === 'suspended') {
-        await supabase.auth.signOut();
-        throw new Error('This college account has been suspended by the platform administrator. Access blocked.');
-      }
-
-      const authenticatedUser = {
-        id: data.user.id,
-        email: data.user.email,
-        role: profile.role,
-        full_name: profile.full_name,
-        college_id: profile.college_id,
-        collegeName: profile.colleges?.name,
-        collegeCode: profile.colleges?.code,
-        status: 'active',
-      };
-
-      setUser(authenticatedUser);
-      setViewAsRole(null);
-      return authenticatedUser;
-    }
-
-    // 2. Otherwise use mock users with full validation
-    const foundUser = MOCK_USERS.find(
+    // 1. Check known Demo Credentials first for seamless testing
+    const demoUser = MOCK_USERS.find(
       (u) => u.email.toLowerCase() === trimmedEmail && u.password === password
     );
 
-    if (!foundUser) {
-      throw new Error('Invalid email or password. Please check your credentials.');
+    if (demoUser) {
+      if (demoUser.status === 'suspended') {
+        throw new Error('This college account has been suspended by the platform administrator. Access blocked.');
+      }
+      if (demoUser.valid_until && new Date(demoUser.valid_until) < new Date()) {
+        throw new Error('This college subscription validity has expired. Please contact support.');
+      }
+
+      setUser(demoUser);
+      setViewAsRole(null);
+      return demoUser;
     }
 
-    if (foundUser.status === 'suspended') {
-      throw new Error('This college account has been suspended by the platform administrator. Access blocked.');
+    // 2. If Supabase is connected, attempt Supabase Auth login
+    if (isSupabaseConfigured() && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: trimmedEmail,
+          password,
+        });
+
+        if (error) throw error;
+
+        // Fetch profile
+        const { data: profile, error: profileErr } = await supabase
+          .from('profiles')
+          .select('*, colleges(name, code, status, valid_until)')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profileErr) throw profileErr;
+
+        if (profile.colleges?.status === 'suspended') {
+          await supabase.auth.signOut();
+          throw new Error('This college account has been suspended by the platform administrator. Access blocked.');
+        }
+
+        const authenticatedUser = {
+          id: data.user.id,
+          email: data.user.email,
+          role: profile.role,
+          full_name: profile.full_name,
+          college_id: profile.college_id,
+          collegeName: profile.colleges?.name,
+          collegeCode: profile.colleges?.code,
+          status: 'active',
+        };
+
+        setUser(authenticatedUser);
+        setViewAsRole(null);
+        return authenticatedUser;
+      } catch (authErr) {
+        throw new Error(authErr.message || 'Invalid email or password. Please check your credentials.');
+      }
     }
 
-    if (foundUser.valid_until && new Date(foundUser.valid_until) < new Date()) {
-      throw new Error('This college subscription validity has expired. Please contact support.');
-    }
-
-    setUser(foundUser);
-    setViewAsRole(null);
-    return foundUser;
+    throw new Error('Invalid email or password. Please check your credentials.');
   };
 
   const logout = async () => {
     if (isSupabaseConfigured() && supabase) {
-      await supabase.auth.signOut();
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        // ignore
+      }
     }
     setUser(null);
     setViewAsRole(null);

@@ -59,3 +59,4 @@ In your **Supabase Dashboard**:
 - [x] **Bulk Tools**: CSV bulk upload with row-level error reporting, CSV list export, and batch multi-page PDF generation.
 - [x] **Print-Ready Cards**: ISO CR-80 standard card dimensions (85.6 mm × 54 mm) in high-resolution PNG & PDF.
 - [x] **Interactive QR Code**: SVG QR code linking directly to `/verify/:cardId`.
+

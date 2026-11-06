@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import Button from '../common/Button';
 
 const AVAILABLE_FONTS = [
@@ -16,9 +16,32 @@ const PHOTO_SHAPES = [
 ];
 
 const LOGO_POSITIONS = [
-  { value: 'top-center', label: 'Top Center' },
   { value: 'top-left', label: 'Top Left' },
+  { value: 'top-center', label: 'Top Center' },
   { value: 'top-right', label: 'Top Right' },
+];
+
+const PRESET_LOGOS = [
+  {
+    name: 'Academic Cap',
+    url: 'https://api.iconify.design/lucide:graduation-cap.svg?color=%23ffffff',
+  },
+  {
+    name: 'University Shield',
+    url: 'https://api.iconify.design/lucide:shield-check.svg?color=%23ffffff',
+  },
+  {
+    name: 'Tech Microchip',
+    url: 'https://api.iconify.design/lucide:cpu.svg?color=%23ffffff',
+  },
+  {
+    name: 'Classic Campus',
+    url: 'https://api.iconify.design/lucide:landmark.svg?color=%23ffffff',
+  },
+  {
+    name: 'Science Atom',
+    url: 'https://api.iconify.design/lucide:atom.svg?color=%23ffffff',
+  },
 ];
 
 const ALL_FIELDS = [
@@ -60,16 +83,16 @@ const THEME_PRESETS = [
   },
 ];
 
-/**
- * TemplateEditorForm - Form controls for configuring the JSON card template.
- * Meets Section 6 requirements.
- */
 export default function TemplateEditorForm({
   template = {},
   onChange,
   onSave,
   onReset,
+  collegeName = '',
+  collegeCode = '',
 }) {
+  const fileInputRef = useRef(null);
+
   const layout = template.layout || 'vertical';
   const colors = template.colors || {
     primary: '#1e3a8a',
@@ -79,7 +102,9 @@ export default function TemplateEditorForm({
   };
   const font = template.font || 'Poppins';
   const photoShape = template.photoShape || 'circle';
-  const logoPosition = template.logoPosition || 'top-center';
+  const logoPosition = template.logoPosition || 'top-left';
+  const collegeLogo = template.collegeLogo || template.logo_url || '';
+  const logoSize = Number(template.logoSize) || 42;
   const showFields = template.showFields || ['name', 'rollNo', 'department', 'year', 'bloodGroup', 'phone', 'validUntil'];
   const fieldLabels = template.fieldLabels || {};
   const showQR = template.showQR ?? true;
@@ -102,7 +127,7 @@ export default function TemplateEditorForm({
   };
 
   const handleFieldToggle = (fieldKey) => {
-    if (fieldKey === 'name') return; // name is always required
+    if (fieldKey === 'name') return;
     const isChecked = showFields.includes(fieldKey);
     const updated = isChecked
       ? showFields.filter((f) => f !== fieldKey)
@@ -123,15 +148,150 @@ export default function TemplateEditorForm({
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo file size must be less than 2 MB');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       handleUpdate({ collegeLogo: reader.result });
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleRemoveLogo = () => {
+    handleUpdate({ collegeLogo: '' });
   };
 
   return (
     <div className="space-y-6">
+      {/* 1. College Branding & Custom Logo (User Requested Feature) */}
+      <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 space-y-4">
+        <div className="flex items-center justify-between border-b pb-2">
+          <div>
+            <h4 className="text-xs font-bold uppercase tracking-wider text-gray-700">
+              College Logo & Branding
+            </h4>
+            <p className="text-[11px] text-gray-500">
+              Upload your official institution crest or choose from preset emblems.
+            </p>
+          </div>
+          <span className="text-xs font-mono font-bold bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+            {collegeCode || template.collegeCode || 'COLLEGE'}
+          </span>
+        </div>
+
+        {/* Logo Preview & Upload */}
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="relative group w-20 h-20 rounded-2xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center p-2 flex-shrink-0 shadow-md">
+            {collegeLogo ? (
+              <img
+                src={collegeLogo}
+                alt="College Logo"
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <span className="text-xs font-black text-white/50">NO LOGO</span>
+            )}
+          </div>
+
+          <div className="space-y-2 flex-1 text-center sm:text-left">
+            <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                onChange={handleLogoUpload}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-3.5 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-xs transition-colors"
+              >
+                Upload Custom Logo 📤
+              </button>
+
+              {collegeLogo && (
+                <button
+                  type="button"
+                  onClick={handleRemoveLogo}
+                  className="px-3 py-1.5 bg-white border border-rose-300 text-rose-600 rounded-lg text-xs font-semibold hover:bg-rose-50 transition-colors"
+                >
+                  Remove Logo ✕
+                </button>
+              )}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Recommended: Transparent PNG or SVG • Max: 2 MB
+            </p>
+          </div>
+        </div>
+
+        {/* Preset Emblem Library */}
+        <div>
+          <span className="text-[10px] font-bold uppercase text-gray-400 block mb-2 tracking-wider">
+            Or Pick from Preset Emblems:
+          </span>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {PRESET_LOGOS.map((emblem) => {
+              const isSelected = collegeLogo === emblem.url;
+              return (
+                <button
+                  key={emblem.name}
+                  type="button"
+                  onClick={() => handleUpdate({ collegeLogo: emblem.url })}
+                  className={`p-2 rounded-xl border text-xs flex flex-col items-center space-y-1 transition-all ${
+                    isSelected
+                      ? 'border-blue-600 bg-blue-50 font-bold text-blue-800 ring-2 ring-blue-500/20'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <img src={emblem.url} alt={emblem.name} className="w-6 h-6 filter drop-shadow-xs" />
+                  <span className="text-[10px] truncate max-w-full">{emblem.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Logo Display Settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Logo Position in Header
+            </label>
+            <select
+              value={logoPosition}
+              onChange={(e) => handleUpdate({ logoPosition: e.target.value })}
+              className="w-full text-xs p-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500"
+            >
+              {LOGO_POSITIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Logo Size: <span className="font-bold text-blue-600">{logoSize}px</span>
+            </label>
+            <input
+              type="range"
+              min="28"
+              max="58"
+              value={logoSize}
+              onChange={(e) => handleUpdate({ logoSize: Number(e.target.value) })}
+              className="w-full accent-blue-600 h-2 bg-gray-200 rounded-lg cursor-pointer mt-2"
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Theme Presets */}
       <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
         <span className="block text-xs font-bold uppercase text-gray-500 tracking-wider mb-2">
@@ -167,10 +327,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 1. Layout & Dimensions */}
+      {/* 2. Layout & Dimensions */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          1. Layout & Card Orientation
+          2. Layout & Card Orientation
         </h4>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -219,10 +379,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 2. Color Palette */}
+      {/* 3. Color Palette */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          2. Color Scheme
+          3. Color Scheme
         </h4>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
@@ -295,12 +455,12 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 3. Typography, Photo Shape & Logo Position */}
+      {/* 4. Typography & Photo Shape */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          3. Styling & Branding
+          4. Typography & Photo Shape
         </h4>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               Typography Font
@@ -320,7 +480,7 @@ export default function TemplateEditorForm({
 
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Photo Shape
+              Student Photo Shape
             </label>
             <select
               value={photoShape}
@@ -334,30 +494,13 @@ export default function TemplateEditorForm({
               ))}
             </select>
           </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
-              Logo Position
-            </label>
-            <select
-              value={logoPosition}
-              onChange={(e) => handleUpdate({ logoPosition: e.target.value })}
-              className="w-full text-xs p-2 rounded-lg border border-gray-300 bg-white focus:ring-2 focus:ring-blue-500"
-            >
-              {LOGO_POSITIONS.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 
-      {/* 4. Visible Fields & Custom Labels */}
+      {/* 5. Visible Fields & Custom Labels */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          4. Visible Card Fields & Custom Labels
+          5. Visible Card Fields & Custom Labels
         </h4>
         <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-200">
           <div className="grid grid-cols-12 text-[11px] font-bold text-gray-500 uppercase tracking-wider pb-1 border-b">
@@ -406,10 +549,10 @@ export default function TemplateEditorForm({
         </div>
       </div>
 
-      {/* 5. QR Code & Footer Text */}
+      {/* 6. QR Code & Footer Text */}
       <div>
         <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-          5. Verification QR & Footer Text
+          6. Verification QR & Footer Text
         </h4>
         <div className="space-y-3">
           <div className="flex items-center space-x-3 p-3 bg-white border border-gray-200 rounded-xl">
@@ -449,7 +592,7 @@ export default function TemplateEditorForm({
         )}
         {onSave && (
           <Button type="button" variant="primary" size="md" onClick={onSave}>
-            Save Template Config
+            Save Template to {collegeCode || 'College'} 💾
           </Button>
         )}
       </div>

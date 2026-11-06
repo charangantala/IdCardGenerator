@@ -1,57 +1,106 @@
-import React, { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import TemplateEditorForm from '../../components/forms/TemplateEditorForm';
 import IdCardPreview from '../../components/IdCard/IdCardPreview';
 import Toast from '../../components/common/Toast';
 import Modal from '../../components/common/Modal';
 import Button from '../../components/common/Button';
 import { SAMPLE_STUDENTS, SAMPLE_TEMPLATES } from '../../utils/sampleData';
+import { templateService } from '../../services/templateService';
 
-const COLLEGES_MAP = {
-  mitc: { id: 'mitc', name: 'MIT College of Technology', code: 'MITC' },
-  ait: { id: 'ait', name: 'Apex Institute of Technology', code: 'AIT' },
-  sec: { id: 'sec', name: 'Stanford Engineering College', code: 'SEC' },
-};
+const AVAILABLE_COLLEGES = [
+  { id: 'mitc', name: 'MIT College of Technology', code: 'MITC' },
+  { id: 'ait', name: 'Apex Institute of Technology', code: 'AIT' },
+  { id: 'sec', name: 'Stanford Engineering College', code: 'SEC' },
+];
 
 export default function TemplateEditor() {
   const { id = 'mitc' } = useParams();
-  const college = COLLEGES_MAP[id] || { id, name: id.toUpperCase(), code: id.toUpperCase() };
+  const navigate = useNavigate();
 
-  // Current template state
-  const [template, setTemplate] = useState({
-    ...SAMPLE_TEMPLATES.classicBlue,
-    collegeName: college.name,
-    collegeCode: college.code,
-  });
+  const [selectedCollegeId, setSelectedCollegeId] = useState(id.toLowerCase());
+  const activeCollege =
+    AVAILABLE_COLLEGES.find((c) => c.id === selectedCollegeId) || {
+      id: selectedCollegeId,
+      name: selectedCollegeId.toUpperCase(),
+      code: selectedCollegeId.toUpperCase(),
+    };
 
-  // Selected preview student index
+  const [template, setTemplate] = useState({ ...SAMPLE_TEMPLATES.classicBlue });
+  const [loading, setLoading] = useState(true);
   const [previewStudentIndex, setPreviewStudentIndex] = useState(0);
   const [toast, setToast] = useState(null);
   const [showJsonModal, setShowJsonModal] = useState(false);
 
+  // Load the assigned template for the selected college
+  useEffect(() => {
+    async function loadCollegeTemplate() {
+      setLoading(true);
+      try {
+        const t = await templateService.getTemplateByCollegeId(selectedCollegeId);
+        setTemplate({
+          ...t,
+          collegeName: activeCollege.name,
+          collegeCode: activeCollege.code,
+        });
+      } catch (err) {
+        console.error('Failed to load template:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCollegeTemplate();
+  }, [selectedCollegeId, activeCollege.name, activeCollege.code]);
+
   const activeStudent = {
     ...SAMPLE_STUDENTS[previewStudentIndex],
-    collegeName: college.name,
-    collegeCode: college.code,
+    collegeName: activeCollege.name,
+    collegeCode: activeCollege.code,
+    collegeLogo: template.collegeLogo,
   };
 
-  const handleSave = () => {
-    // In Phase 3: Mock save in state; in Phase 7: saves to Supabase colleges.template_config
-    setToast({
-      message: `Template configuration saved successfully for ${college.name}!`,
-      type: 'success',
-    });
-    setTimeout(() => setToast(null), 4000);
+  const handleCollegeSwitch = (newId) => {
+    setSelectedCollegeId(newId);
+    navigate(`/admin/colleges/${newId}/template`, { replace: true });
+  };
+
+  const handleSave = async () => {
+    try {
+      await templateService.updateTemplate(selectedCollegeId, {
+        ...template,
+        collegeName: activeCollege.name,
+        collegeCode: activeCollege.code,
+      });
+
+      setToast({
+        message: `Template successfully assigned & saved to ${activeCollege.name}! Students will now see this card design.`,
+        type: 'success',
+      });
+    } catch (err) {
+      setToast({
+        message: 'Failed to save template. Please try again.',
+        type: 'error',
+      });
+    }
+    setTimeout(() => setToast(null), 5000);
   };
 
   const handleReset = () => {
+    const baseDefault =
+      selectedCollegeId === 'ait'
+        ? SAMPLE_TEMPLATES.modernEmerald
+        : selectedCollegeId === 'sec'
+        ? SAMPLE_TEMPLATES.crimsonTech
+        : SAMPLE_TEMPLATES.classicBlue;
+
     setTemplate({
-      ...SAMPLE_TEMPLATES.classicBlue,
-      collegeName: college.name,
-      collegeCode: college.code,
+      ...baseDefault,
+      collegeName: activeCollege.name,
+      collegeCode: activeCollege.code,
     });
     setToast({
-      message: 'Template reset to default specifications.',
+      message: 'Template reset to defaults.',
       type: 'info',
     });
     setTimeout(() => setToast(null), 3000);
@@ -67,29 +116,27 @@ export default function TemplateEditor() {
               Colleges
             </Link>
             <span>/</span>
-            <Link to={`/admin/colleges/${id}`} className="hover:text-blue-600 transition-colors">
-              {college.code}
-            </Link>
+            <span className="font-bold text-gray-700 uppercase">{activeCollege.code}</span>
             <span>/</span>
-            <span className="text-blue-600 uppercase">Card Template</span>
+            <span className="text-blue-600 uppercase font-bold">Template Designer</span>
           </div>
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            Template Editor: {college.name}
+            ID Card Template Designer
           </h1>
           <p className="text-xs text-gray-500 mt-1">
-            Configure the visual design, fields, and branding for all student ID cards issued by this college.
+            Customize the card design and assign it to a partner college. All students of this college will immediately receive this template.
           </p>
         </div>
 
         {/* Action Header Buttons */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 sm:space-x-3">
           <Button
             type="button"
             variant="secondary"
             size="sm"
             onClick={() => setShowJsonModal(true)}
           >
-            View JSON
+            Inspect JSON 🔍
           </Button>
           <Button
             type="button"
@@ -97,8 +144,33 @@ export default function TemplateEditor() {
             size="sm"
             onClick={handleSave}
           >
-            Save Changes
+            Assign & Save to {activeCollege.code} 💾
           </Button>
+        </div>
+      </div>
+
+      {/* College Selector Bar */}
+      <div className="p-4 bg-slate-100/90 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center space-x-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-600">
+            Editing Template For:
+          </span>
+          <select
+            value={selectedCollegeId}
+            onChange={(e) => handleCollegeSwitch(e.target.value)}
+            className="text-xs font-bold bg-white text-blue-700 px-3 py-1.5 rounded-lg border border-gray-300 shadow-xs focus:ring-2 focus:ring-blue-500 cursor-pointer"
+          >
+            {AVAILABLE_COLLEGES.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.code})
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center space-x-2 text-xs text-gray-500">
+          <span>Active College:</span>
+          <span className="font-bold text-gray-800">{activeCollege.name}</span>
         </div>
       </div>
 
@@ -106,12 +178,20 @@ export default function TemplateEditor() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Template Editor Controls */}
         <div className="lg:col-span-7 bg-white p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-sm">
-          <TemplateEditorForm
-            template={template}
-            onChange={setTemplate}
-            onSave={handleSave}
-            onReset={handleReset}
-          />
+          {loading ? (
+            <div className="p-12 text-center text-xs text-gray-500">
+              Loading college template...
+            </div>
+          ) : (
+            <TemplateEditorForm
+              template={template}
+              onChange={setTemplate}
+              onSave={handleSave}
+              onReset={handleReset}
+              collegeName={activeCollege.name}
+              collegeCode={activeCollege.code}
+            />
+          )}
         </div>
 
         {/* Right Column: Sticky Live ID Card Preview */}
@@ -123,7 +203,7 @@ export default function TemplateEditor() {
                 Preview With Student:
               </span>
               <div className="flex space-x-1">
-                {SAMPLE_STUDENTS.map((st, i) => (
+                {SAMPLE_STUDENTS.slice(0, 3).map((st, i) => (
                   <button
                     key={st.id}
                     type="button"
@@ -147,10 +227,16 @@ export default function TemplateEditor() {
               status="approved"
             />
 
-            <div className="mt-4 pt-3 border-t text-center">
-              <span className="text-[11px] text-gray-400">
+            <div className="mt-4 pt-3 border-t text-center space-y-2">
+              <span className="text-[11px] text-gray-400 block">
                 Live Preview updates instantly on every change.
               </span>
+              <Link
+                to="/student"
+                className="inline-block text-xs text-blue-600 hover:underline font-bold"
+              >
+                Go to Student Portal to verify card →
+              </Link>
             </div>
           </div>
         </div>
@@ -165,7 +251,7 @@ export default function TemplateEditor() {
       >
         <div className="space-y-4">
           <p className="text-xs text-gray-500">
-            This JSON represents the exact <code className="font-mono bg-gray-100 px-1 py-0.5 rounded text-blue-700">template_config</code> stored in the database for {college.name}.
+            This JSON represents the exact <code className="font-mono bg-gray-100 px-1 py-0.5 rounded text-blue-700">template_config</code> stored for {activeCollege.name}.
           </p>
           <pre className="p-4 bg-slate-900 text-emerald-400 rounded-xl text-xs font-mono overflow-x-auto max-h-96">
             {JSON.stringify(template, null, 2)}
