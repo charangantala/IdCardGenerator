@@ -13,6 +13,8 @@ const INITIAL_DEFAULT_COLLEGES = [
     student_limit: 1200,
     validUntil: '2026-12-31',
     valid_until: '2026-12-31',
+    adminEmail: 'college@mitc.com',
+    adminPassword: 'College@123',
     template_config: SAMPLE_TEMPLATES.classicBlue,
   },
   {
@@ -24,6 +26,8 @@ const INITIAL_DEFAULT_COLLEGES = [
     student_limit: 850,
     validUntil: '2027-06-30',
     valid_until: '2027-06-30',
+    adminEmail: 'college@ait.com',
+    adminPassword: 'College@123',
     template_config: SAMPLE_TEMPLATES.modernEmerald,
   },
   {
@@ -35,6 +39,8 @@ const INITIAL_DEFAULT_COLLEGES = [
     student_limit: 2000,
     validUntil: '2026-08-31',
     valid_until: '2026-08-31',
+    adminEmail: 'college@sec.com',
+    adminPassword: 'College@123',
     template_config: SAMPLE_TEMPLATES.crimsonTech,
   },
 ];
@@ -61,6 +67,25 @@ function saveStoredColleges(colleges) {
 }
 
 export const collegeService = {
+  /**
+   * Broadcast college changes across tabs
+   */
+  broadcastChange(type, payload) {
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('cardcraft:college_change', { detail: { type, payload } })
+        );
+        if (window.BroadcastChannel) {
+          const bc = new BroadcastChannel('cardcraft_realtime');
+          bc.postMessage({ type, payload, timestamp: Date.now() });
+        }
+      }
+    } catch (e) {
+      console.warn('College broadcast error:', e);
+    }
+  },
+
   /**
    * Fetch all colleges (Admin only)
    */
@@ -218,6 +243,7 @@ export const collegeService = {
       }
     }
 
+    this.broadcastChange('COLLEGE_CREATED', newCollege);
     return newCollege;
   },
 
@@ -273,6 +299,7 @@ export const collegeService = {
     }
     saveStoredColleges(stored);
 
+    this.broadcastChange('COLLEGE_UPDATED', updatedCol);
     return updatedCol;
   },
 
@@ -295,6 +322,7 @@ export const collegeService = {
 
     const stored = getStoredColleges().filter((c) => c.id !== id);
     saveStoredColleges(stored);
+    this.broadcastChange('COLLEGE_DELETED', { id });
     return true;
   },
 

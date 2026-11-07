@@ -83,20 +83,50 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Load all registered colleges on mount
+  // Load all registered colleges on mount & subscribe to new colleges added by Admin
   useEffect(() => {
     async function loadColleges() {
       try {
         const list = await collegeService.getColleges();
         if (list && list.length > 0) {
           setColleges(list);
-          setSelectedCollegeId(list[0].id || list[0].code || 'mitc');
+          setSelectedCollegeId((prev) => prev || list[0].id || list[0].code || 'mitc');
         }
       } catch (err) {
         console.warn('Failed to load colleges in Login:', err);
       }
     }
     loadColleges();
+
+    const handleCollegeEvent = () => {
+      collegeService.getColleges().then((list) => {
+        if (list && list.length > 0) setColleges(list);
+      });
+    };
+    window.addEventListener('cardcraft:college_change', handleCollegeEvent);
+
+    let bc = null;
+    try {
+      if (typeof window !== 'undefined' && window.BroadcastChannel) {
+        bc = new BroadcastChannel('cardcraft_realtime');
+        bc.onmessage = (e) => {
+          if (
+            e.data?.type === 'COLLEGE_CREATED' ||
+            e.data?.type === 'COLLEGE_UPDATED' ||
+            e.data?.type === 'COLLEGE_DELETED'
+          ) {
+            handleCollegeEvent();
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('BroadcastChannel error in Login:', e);
+    }
+
+    return () => {
+      window.removeEventListener('cardcraft:college_change', handleCollegeEvent);
+      if (bc) bc.close();
+    };
   }, []);
 
   const selectedCollege = useMemo(() => {
@@ -304,6 +334,45 @@ export default function Login() {
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-medium flex items-start space-x-2">
               <span className="text-sm font-bold flex-shrink-0">⚠️</span>
               <span>{error}</span>
+            </div>
+          )}
+
+          {/* College-Specific: Quick Institution Switcher */}
+          {selectedRole === 'college' && (
+            <div className="p-3.5 bg-blue-50/70 rounded-2xl border border-blue-200 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-blue-950 flex items-center gap-1.5">
+                  <span>🏛️</span>
+                  <span>Select Registered College for Presentation:</span>
+                </span>
+                <span className="text-[10px] bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-bold">
+                  1-Click Select
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {colleges.map((c) => {
+                  const targetEmail = (c.adminEmail || `college@${c.code?.toLowerCase()}.com`).toLowerCase();
+                  const isSelected = email.toLowerCase() === targetEmail;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setEmail(targetEmail);
+                        setPassword(c.adminPassword || 'College@123');
+                        setError('');
+                      }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-white text-gray-700 border-gray-200 hover:bg-blue-50 hover:border-blue-300'
+                      }`}
+                    >
+                      {c.name} ({c.code})
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 

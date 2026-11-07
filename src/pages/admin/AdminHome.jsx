@@ -48,7 +48,7 @@ export default function AdminHome() {
         if (fetched && fetched.length > 0) {
           setColleges(fetched);
         }
-        const studs = await studentService.getStudentsByCollege('mitc');
+        const studs = await studentService.getAllStudents();
         if (studs) setLiveStudents(studs);
       } catch (err) {
         console.warn('Failed to fetch admin data from database:', err);
@@ -57,7 +57,7 @@ export default function AdminHome() {
     loadAdminData();
 
     const unsubscribe = studentService.subscribeToChanges(() => {
-      studentService.getStudentsByCollege('mitc').then((data) => {
+      studentService.getAllStudents().then((data) => {
         if (data) setLiveStudents(data);
       });
     });
@@ -74,8 +74,14 @@ export default function AdminHome() {
   const studentCounts = useMemo(() => {
     const counts = {};
     liveStudents.forEach((st) => {
-      const colId = st.college_id || 'mitc';
+      const colId = (st.college_id || 'mitc').toLowerCase();
+      const colCode = (st.collegeCode || '').toLowerCase();
       counts[colId] = (counts[colId] || 0) + 1;
+      if (colCode) counts[colCode] = (counts[colCode] || 0) + 1;
+      // Also map MITC UUID
+      if (colId === 'mitc' || colCode === 'mitc') {
+        counts['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'] = (counts['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11'] || 0) + 1;
+      }
     });
     return counts;
   }, [liveStudents]);

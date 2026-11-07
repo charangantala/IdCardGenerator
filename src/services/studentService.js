@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { SAMPLE_STUDENTS } from '../utils/sampleData';
 
 const LIVE_STUDENTS_STORAGE_KEY = 'cardcraft_live_students';
 const realtimeChannel = typeof window !== 'undefined' && window.BroadcastChannel
@@ -8,11 +9,16 @@ const realtimeChannel = typeof window !== 'undefined' && window.BroadcastChannel
 function getStoredLiveStudents() {
   try {
     const raw = localStorage.getItem(LIVE_STUDENTS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
   } catch (err) {
     console.error('Failed to parse live students:', err);
   }
-  return [];
+  // Initialize with rich sample data so faculty review is immediately populated
+  saveStoredLiveStudents(SAMPLE_STUDENTS);
+  return SAMPLE_STUDENTS;
 }
 
 function saveStoredLiveStudents(students) {
@@ -24,6 +30,13 @@ function saveStoredLiveStudents(students) {
 }
 
 export const studentService = {
+  /**
+   * Fetch all students across all colleges (for Admin overview)
+   */
+  async getAllStudents() {
+    return this.getStudentsByCollege(null);
+  },
+
   /**
    * Broadcast an event to all open tabs / dashboards
    */
@@ -102,7 +115,7 @@ export const studentService = {
   /**
    * Fetch students strictly filtered by college_id from Supabase (or live store)
    */
-  async getStudentsByCollege(collegeId = 'mitc', filters = {}) {
+  async getStudentsByCollege(collegeId = null, filters = {}) {
     if (isSupabaseConfigured() && supabase) {
       try {
         let query = supabase
@@ -113,9 +126,14 @@ export const studentService = {
           `)
           .order('created_at', { ascending: false });
 
-        // If collegeId is a valid UUID, filter by college_id
-        if (collegeId && collegeId !== 'mitc') {
-          query = query.eq('college_id', collegeId);
+        // If collegeId is specified and not 'all', filter by college_id
+        if (collegeId && collegeId !== 'all') {
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(collegeId);
+          if (isUuid) {
+            query = query.eq('college_id', collegeId);
+          } else if (collegeId.toLowerCase() === 'mitc') {
+            query = query.or('college_id.eq.a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11,college_id.ilike.mitc');
+          }
         }
 
         if (filters.departmentId) {
@@ -155,11 +173,14 @@ export const studentService = {
     // Fallback to live store (persists across student submissions & college dashboard)
     const stored = getStoredLiveStudents();
     return stored.filter((s) => {
-      if (collegeId) {
+      if (collegeId && collegeId !== 'all') {
         const target = collegeId.toLowerCase();
         const sCol = (s.college_id || 'mitc').toLowerCase();
         const sCode = (s.collegeCode || '').toLowerCase();
-        if (sCol !== target && sCode !== target) return false;
+        const isMitc =
+          target === 'mitc' &&
+          (sCol === 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' || sCode === 'mitc' || sCol === 'mitc');
+        if (sCol !== target && sCode !== target && !isMitc) return false;
       }
       if (filters.departmentId && s.department_id !== filters.departmentId) return false;
       if (filters.year && filters.year !== 'all' && Number(s.year) !== Number(filters.year)) return false;
